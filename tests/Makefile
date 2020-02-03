@@ -1,3 +1,5 @@
+CXX = h5c++ 
+
 CXXFLAGS = \
   -std=c++14 \
   -Wpedantic \
@@ -20,9 +22,6 @@ DBGFLAGS = \
 
 OPTFLAGS = \
   -O2
-
-LDFLAGS = \
-  -lhdf5
 
 ARTIFACTS = \
   main \
