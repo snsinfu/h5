@@ -29,7 +29,8 @@ ARTIFACTS = \
 
 OBJECTS = \
   main.o \
-  test_unique_hid.o
+  test_unique_hid.o \
+  test_file.o
 
 
 .PHONY: run clean
@@ -48,3 +49,4 @@ main: $(OBJECTS)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 test_unique_hid.o: test_unique_hid.cc ../include/h5.hpp
+test_file.o: test_file.cc ../include/h5.hpp

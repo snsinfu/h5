@@ -36,6 +36,21 @@
 
 namespace h5
 {
+    // EXCEPTION -------------------------------------------------------------
+
+    // The exception class used to report an error.
+    class exception : public std::runtime_error
+    {
+    public:
+        explicit exception(std::string const& msg)
+            : std::runtime_error{msg}
+        {
+        }
+    };
+
+
+    // RAII ------------------------------------------------------------------
+
     // Thin RAII wrapper for an hid_t.
     template<herr_t(& close_fn)(hid_t)>
     class unique_hid
@@ -85,6 +100,100 @@ namespace h5
 
     private:
         hid_t _hid = -1;
+    };
+
+
+    // FILE HANDLING ---------------------------------------------------------
+
+    namespace detail
+    {
+        // Opens an existing HDF5 file.
+        inline
+        h5::unique_hid<H5Fclose>
+        do_open_file(std::string const& filename, bool readonly)
+        {
+            h5::unique_hid<H5Fclose> file = H5Fopen(
+                filename.c_str(),
+                readonly ? H5F_ACC_RDONLY : H5F_ACC_RDWR,
+                H5P_DEFAULT
+            );
+            if (file < 0) {
+                throw h5::exception("cannot open file");
+            }
+            return file;
+        }
+
+
+        // Creates an empty HDF5 file.
+        inline
+        h5::unique_hid<H5Fclose>
+        do_create_file(std::string const& filename, bool truncate)
+        {
+            h5::unique_hid<H5Fclose> file = H5Fcreate(
+                filename.c_str(),
+                truncate ? H5F_ACC_TRUNC : H5F_ACC_EXCL,
+                H5P_DEFAULT,
+                H5P_DEFAULT
+            );
+            if (file < 0) {
+                throw h5::exception("cannot create file");
+            }
+            return file;
+        }
+
+
+        // Opens or creates an HDF5 file based on given mode string.
+        inline
+        h5::unique_hid<H5Fclose>
+        open_file(std::string const& filename, std::string const& mode)
+        {
+            if (mode == "r") {
+                return detail::do_open_file(filename, true);
+            }
+            if (mode == "r+") {
+                return detail::do_open_file(filename, false);
+            }
+            if (mode == "w") {
+                return detail::do_create_file(filename, true);
+            }
+            if (mode == "w-") {
+                return detail::do_create_file(filename, false);
+            }
+            throw h5::exception("unrecognized file mode");
+        }
+    }
+
+
+    // A `file` object provides access to datasets in an HDF5 file.
+    class file
+    {
+    public:
+        // Opens or creates an HDF5 file.
+        //
+        // Parameters:
+        //   filename = Path to the HDF5 file.
+        //   mode     = One of these four strings: r, r+, w or w-.
+        //
+        // | Mode | Meaning                                   |
+        // |------|-------------------------------------------|
+        // | r    | Read only. File must exist.               |
+        // | r+   | Read-write. File must exist.              |
+        // | w    | Read-write. File is created or truncated. |
+        // | w-   | Read-write. File must not exist.          |
+        //
+        file(std::string const& filename, std::string const& mode)
+            : _file{detail::open_file(filename, mode)}
+        {
+        }
+
+        // Returns the HID of the file.
+        hid_t handle() const noexcept
+        {
+            return _file;
+        }
+
+    private:
+        h5::unique_hid<H5Fclose> _file;
     };
 }
 
