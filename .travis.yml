@@ -1,0 +1,22 @@
+dist: xenial
+language: cpp
+
+addons:
+  apt:
+    packages:
+      - clang
+      - libc++-dev
+      - libhdf5-dev
+
+stages:
+  - test
+
+jobs:
+  include:
+    - stage: test
+      name: g++
+      script: make -C tests -j 2 CXX=g++
+
+    - stage: test
+      name: clang++
+      script: make -C tests -j 2 CXX=clang++ EXTRA_CXXFLAGS=-stdlib=libc++

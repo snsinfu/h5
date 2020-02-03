@@ -7,7 +7,8 @@ CXXFLAGS = \
   -Wsign-conversion \
   $(INCLUDES) \
   $(DBGFLAGS) \
-  $(OPTFLAGS)
+  $(OPTFLAGS) \
+  $(EXTRA_CXXFLAGS)
 
 INCLUDES = \
   -isystem include \
