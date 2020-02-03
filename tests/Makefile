@@ -20,11 +20,16 @@ DBGFLAGS = \
 OPTFLAGS = \
   -O2
 
+LDFLAGS = \
+  -lhdf5
+
 ARTIFACTS = \
-  main
+  main \
+  $(OBJECTS)
 
 OBJECTS = \
-  main.o
+  main.o \
+  test_unique_hid.o
 
 
 .PHONY: run clean
@@ -42,8 +47,4 @@ main: $(OBJECTS)
 .cc.o:
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
--include: depends.mk
-
-depends.mk:
-	for src in $(SOURCES); do \
-	$(CXX) $(CXXFLAGS) -MD -MF- -MT ${src%.*}.o ${src}; done > $@
+test_unique_hid.o: test_unique_hid.cc ../include/h5.hpp
