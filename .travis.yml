@@ -15,8 +15,11 @@ jobs:
   include:
     - stage: test
       name: g++
-      script: env HDF5_CXX=g++ make -C tests -j 2
+      script: make -C tests -j 2
 
     - stage: test
       name: clang++
-      script: env HDF5_CXX=clang++ make -C tests -j 2 EXTRA_CXXFLAGS=-stdlib=libc++
+      env:
+        - HDF5_CXX=clang++
+        - HDF5_CLINKER=clang++
+      script: make -C tests -j 2 EXTRA_CXXFLAGS=-stdlib=libc++

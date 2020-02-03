@@ -1,4 +1,4 @@
-CXX = h5c++ 
+CXX = h5c++
 
 CXXFLAGS = \
   -std=c++14 \
