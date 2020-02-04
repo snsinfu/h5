@@ -26,6 +26,7 @@
 #ifndef INCLUDED_SNSINFU_H5_HPP
 #define INCLUDED_SNSINFU_H5_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -100,6 +101,167 @@ namespace h5
 
     private:
         hid_t _hid = -1;
+    };
+
+
+    // DATA TYPES ------------------------------------------------------------
+
+    using i32 = std::int32_t;
+    using u32 = std::uint32_t;
+    using i64 = std::int64_t;
+    using u64 = std::uint64_t;
+
+    // We want to map C++ scalar type to the corresponding HDF5 datatype. We
+    // use function templates because datatype values are determined at run
+    // time. (H5T_* macros are not constants!)
+
+    template<typename T>
+    hid_t storage_type() = delete;
+
+    template<> inline hid_t storage_type<h5::i32>() { return H5T_STD_I32LE; }
+    template<> inline hid_t storage_type<h5::i64>() { return H5T_STD_I64LE; }
+    template<> inline hid_t storage_type<h5::u32>() { return H5T_STD_U32LE; }
+    template<> inline hid_t storage_type<h5::u64>() { return H5T_STD_U64LE; }
+    template<> inline hid_t storage_type<float  >() { return H5T_IEEE_F32LE; }
+    template<> inline hid_t storage_type<double >() { return H5T_IEEE_F64LE; }
+
+    template<typename T>
+    hid_t memory_type() = delete;
+
+    template<> inline hid_t memory_type<h5::i32>() { return H5T_NATIVE_INT32; }
+    template<> inline hid_t memory_type<h5::i64>() { return H5T_NATIVE_INT64; }
+    template<> inline hid_t memory_type<h5::u32>() { return H5T_NATIVE_UINT32; }
+    template<> inline hid_t memory_type<h5::u64>() { return H5T_NATIVE_UINT64; }
+    template<> inline hid_t memory_type<float  >() { return H5T_NATIVE_FLOAT; }
+    template<> inline hid_t memory_type<double >() { return H5T_NATIVE_DOUBLE; }
+
+
+    // SHAPE -----------------------------------------------------------------
+
+    template<int rank>
+    struct shape
+    {
+        std::size_t dims[rank] = {};
+    };
+
+
+    // DATASET HANDLING ------------------------------------------------------
+
+    namespace detail
+    {
+        inline std::string parent_path(std::string const& path)
+        {
+            auto const sep_pos = path.rfind('/');
+            if (sep_pos == std::string::npos) {
+                return "";
+            }
+            return path.substr(0, sep_pos);
+        }
+
+
+        inline bool check_path_exists(hid_t file, std::string const& path)
+        {
+            auto const exists = H5Lexists(file, path.c_str(), H5P_DEFAULT);
+            if (exists < 0) {
+                throw h5::exception("failed to check if a path exists");
+            }
+            return exists > 0;
+        }
+
+
+        inline bool check_path_exists_full(hid_t file, std::string const& path)
+        {
+            auto const parent = detail::parent_path(path);
+            if (!parent.empty()) {
+                if (!check_path_exists_full(file, parent)) {
+                    return false;
+                }
+            }
+            return detail::check_path_exists(file, path);
+        }
+
+
+        template<int rank>
+        h5::shape<rank> check_dataset_rank(hid_t dataset)
+        {
+            h5::unique_hid<H5Sclose> dataspace = H5Dget_space(dataset);
+            if (dataspace < 0) {
+                throw h5::exception("failed to determine dataspace");
+            }
+
+            auto const dataset_rank = H5Sget_simple_extent_ndims(dataspace);
+            if (dataset_rank != rank) {
+                throw h5::exception("unexpected dataset rank");
+            }
+
+            hsize_t dims[rank];
+            if (H5Sget_simple_extent_dims(dataspace, dims, nullptr) < 0) {
+                throw h5::exception("failed to determine dataset shape");
+            }
+
+            h5::shape<rank> shape;
+            for (int i = 0; i < rank; i++) {
+                shape.dims[i] = static_cast<std::size_t>(dims[i]);
+            }
+            return shape;
+        }
+
+
+        inline bool check_conversion_exists(hid_t src_type, hid_t dest_type)
+        {
+            H5T_cdata_t* cdata = nullptr;
+            return H5Tfind(src_type, dest_type, &cdata) != nullptr;
+        }
+
+
+        template<typename D>
+        h5::unique_hid<H5Tclose> check_dataset_type(hid_t dataset)
+        {
+            h5::unique_hid<H5Tclose> datatype = H5Dget_type(dataset);
+            if (datatype < 0) {
+                throw h5::exception("failed to determine datatype");
+            }
+
+            H5T_cdata_t* cdata = nullptr;
+            if (H5Tfind(datatype, h5::storage_type<D>(), &cdata) == nullptr) {
+                return {};
+            }
+            if (H5Tfind(h5::storage_type<D>(), datatype, &cdata) == nullptr) {
+                return {};
+            }
+
+            return datatype;
+        }
+    }
+
+
+    template<typename D, int rank>
+    class dataset
+    {
+    public:
+        dataset(hid_t file, std::string const& path)
+            : _file{file}, _path{path}
+        {
+            if (detail::check_path_exists_full(file, path)) {
+                _dataset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
+                if (_dataset < 0) {
+                    throw h5::exception("failed to open dataset");
+                }
+
+                detail::check_dataset_rank<rank>(_dataset);
+                detail::check_dataset_type<D>(_dataset);
+            }
+        }
+
+        hid_t handle() const noexcept
+        {
+            return _dataset;
+        }
+
+    private:
+        hid_t _file;
+        std::string _path;
+        h5::unique_hid<H5Dclose> _dataset;
     };
 
 
@@ -190,6 +352,12 @@ namespace h5
         hid_t handle() const noexcept
         {
             return _file;
+        }
+
+        template<typename D, int rank = 0>
+        h5::dataset<D, rank> dataset(std::string const& path)
+        {
+            return h5::dataset<D, rank>{_file, path};
         }
 
     private:
