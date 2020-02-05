@@ -259,6 +259,54 @@ namespace h5
 
             return datatype;
         }
+
+
+        // Creates a new simple dataset.
+        template<typename D, int rank>
+        h5::unique_hid<H5Dclose> create_simple_dataset(
+            hid_t file, std::string const& path, h5::shape<rank> const& shape
+        )
+        {
+            hsize_t dims[rank];
+            for (int i = 0; i < rank; i++) {
+                dims[i] = static_cast<hsize_t>(shape.dims[i]);
+            }
+
+            h5::unique_hid<H5Sclose> dataspace = H5Screate_simple(rank, dims, nullptr);
+            if (dataspace < 0) {
+                throw h5::exception("failed to create dataspace");
+            }
+
+            // Allow intermediate groups to be automatically created.
+            h5::unique_hid<H5Pclose> link_props = H5Pcreate(H5P_LINK_CREATE);
+            if (link_props < 0) {
+                throw h5::exception("failed to create link props");
+            }
+            if (H5Pset_create_intermediate_group(link_props, 1) < 0) {
+                throw h5::exception("failed to configure link props");
+            }
+
+            // May add: Chunking, scaleoffset, shuffle, compression.
+            h5::unique_hid<H5Pclose> dataset_props = H5Pcreate(H5P_DATASET_CREATE);
+            if (dataset_props < 0) {
+                throw h5::exception("failed to create dataset props");
+            }
+
+            h5::unique_hid<H5Dclose> dataset = H5Dcreate2(
+                file,
+                path.c_str(),
+                h5::storage_type<D>(),
+                dataspace,
+                link_props,
+                dataset_props,
+                H5P_DEFAULT
+            );
+            if (dataset < 0) {
+                throw h5::exception("failed to create dataset");
+            }
+
+            return dataset;
+        }
     }
 
 
@@ -337,6 +385,9 @@ namespace h5
         // It always creates a new dataset, clobbering existing one if any.
         // Ancestor groups are created if not exist.
         //
+        // XXX: Current implementation is not exception safe. Old dataset will
+        // be lost if writing a new dataset fails.
+        //
         template<typename T>
         void write(T const* buf, h5::shape<rank> const& shape)
         {
@@ -346,46 +397,7 @@ namespace h5
                 }
             }
             _dataset = -1;
-
-            //
-            hsize_t dims[rank];
-            for (int i = 0; i < rank; i++) {
-                dims[i] = static_cast<hsize_t>(shape.dims[i]);
-            }
-
-            h5::unique_hid<H5Sclose> dataspace = H5Screate_simple(rank, dims, nullptr);
-            if (dataspace < 0) {
-                throw h5::exception("failed to create dataspace");
-            }
-
-            //
-            h5::unique_hid<H5Pclose> link_props = H5Pcreate(H5P_LINK_CREATE);
-            if (link_props < 0) {
-                throw h5::exception("failed to create link props");
-            }
-            if (H5Pset_create_intermediate_group(link_props, 1) < 0) {
-                throw h5::exception("failed to configure link props");
-            }
-
-            //
-            h5::unique_hid<H5Pclose> dataset_props = H5Pcreate(H5P_DATASET_CREATE);
-            if (dataset_props < 0) {
-                throw h5::exception("failed to create dataset props");
-            }
-
-            //
-            _dataset = H5Dcreate2(
-                _file,
-                _path.c_str(),
-                h5::storage_type<D>(),
-                dataspace,
-                link_props,
-                dataset_props,
-                H5P_DEFAULT
-            );
-            if (_dataset < 0) {
-                throw h5::exception("failed to create dataset");
-            }
+            _dataset = detail::create_simple_dataset<D, rank>(_file, _path, shape);
 
             auto const status = H5Dwrite(
                 _dataset,
@@ -468,7 +480,7 @@ namespace h5
     }
 
 
-    // A `file` object provides access to datasets in an HDF5 file.
+    // A `file` object provides read/write access to datasets in an HDF5 file.
     class file
     {
     public:
@@ -490,12 +502,25 @@ namespace h5
         {
         }
 
-        // Returns the HID of the file.
+
+        // Returns the underlying file HID.
         hid_t handle() const noexcept
         {
             return _file;
         }
 
+
+        // Opens `path` on the file for reading or writing a dataset.
+        //
+        // Parameters:
+        //   D    = Expected type of the dataset elements.
+        //   rank = Expected rank of the dataset (0: scalar, 1: vector,
+        //          2: matrix, ...).
+        //   path = HDF5 dataset path.
+        //
+        // Returns:
+        //   `h5::dataset` object.
+        //
         template<typename D, int rank = 0>
         h5::dataset<D, rank> dataset(std::string const& path)
         {
