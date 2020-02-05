@@ -142,13 +142,42 @@ namespace h5
     struct shape
     {
         std::size_t dims[rank] = {};
+
+        // Returns the total number of elements in the hypercube of this shape.
+        std::size_t size() const noexcept
+        {
+            std::size_t prod = dims[0];
+            for (int i = 1; i < rank; i++) {
+                prod *= dims[i];
+            }
+            return prod;
+        }
     };
 
+    template<int rank>
+    bool operator==(h5::shape<rank> const& s1, h5::shape<rank> const& s2)
+    {
+        for (int i = 0; i < rank; i++) {
+            if (s1.dims[i] != s2.dims[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
 
-    // DATASET HANDLING ------------------------------------------------------
+    template<int rank>
+    bool operator!=(h5::shape<rank> const& s1, h5::shape<rank> const& s2)
+    {
+        return !(s1 == s2);
+    }
+
+
+    // PATH ------------------------------------------------------------------
 
     namespace detail
     {
+        // Returns the parent of `path`. Returns empty string if `path` has no
+        // parent component.
         inline std::string parent_path(std::string const& path)
         {
             auto const sep_pos = path.rfind('/');
@@ -159,28 +188,31 @@ namespace h5
         }
 
 
+        // Returns true if `path` exists in `file`.
         inline bool check_path_exists(hid_t file, std::string const& path)
-        {
-            auto const exists = H5Lexists(file, path.c_str(), H5P_DEFAULT);
-            if (exists < 0) {
-                throw h5::exception("failed to check if a path exists");
-            }
-            return exists > 0;
-        }
-
-
-        inline bool check_path_exists_full(hid_t file, std::string const& path)
         {
             auto const parent = detail::parent_path(path);
             if (!parent.empty()) {
-                if (!check_path_exists_full(file, parent)) {
+                if (!check_path_exists(file, parent)) {
                     return false;
                 }
             }
-            return detail::check_path_exists(file, path);
+
+            auto const status = H5Lexists(file, path.c_str(), H5P_DEFAULT);
+            if (status < 0) {
+                throw h5::exception("failed to check if a path exists");
+            }
+            return status > 0;
         }
+    }
 
 
+    // DATASET HANDLING ------------------------------------------------------
+
+    namespace detail
+    {
+        // Checks the rank of a dataset. Throws an exception if the actual rank
+        // is not the expected `rank`. Otherwise, returns the shape.
         template<int rank>
         h5::shape<rank> check_dataset_rank(hid_t dataset)
         {
@@ -207,13 +239,9 @@ namespace h5
         }
 
 
-        inline bool check_conversion_exists(hid_t src_type, hid_t dest_type)
-        {
-            H5T_cdata_t* cdata = nullptr;
-            return H5Tfind(src_type, dest_type, &cdata) != nullptr;
-        }
-
-
+        // Checks if the datatype of `dataset` is compatible with `D`. Throws
+        // an exception if the types are incompatible. Returns a datatype hid
+        // of the dataset on success.
         template<typename D>
         h5::unique_hid<H5Tclose> check_dataset_type(hid_t dataset)
         {
@@ -224,10 +252,7 @@ namespace h5
 
             H5T_cdata_t* cdata = nullptr;
             if (H5Tfind(datatype, h5::storage_type<D>(), &cdata) == nullptr) {
-                return {};
-            }
-            if (H5Tfind(h5::storage_type<D>(), datatype, &cdata) == nullptr) {
-                return {};
+                throw h5::exception("incompatible dataset type");
             }
 
             return datatype;
@@ -242,7 +267,7 @@ namespace h5
         dataset(hid_t file, std::string const& path)
             : _file{file}, _path{path}
         {
-            if (detail::check_path_exists_full(file, path)) {
+            if (detail::check_path_exists(file, path)) {
                 _dataset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
                 if (_dataset < 0) {
                     throw h5::exception("failed to open dataset");
@@ -256,6 +281,77 @@ namespace h5
         hid_t handle() const noexcept
         {
             return _dataset;
+        }
+
+        h5::shape<rank> shape() const noexcept
+        {
+            return detail::check_dataset_rank<rank>(_dataset);
+        }
+
+        template<typename T>
+        void read(T* buf, h5::shape<rank> const& shape);
+
+        template<typename T>
+        void write(T const* buf, h5::shape<rank> const& shape)
+        {
+            if (detail::check_path_exists(_file, _path)) {
+                if (H5Ldelete(_file, _path.c_str(), H5P_DEFAULT) < 0) {
+                    throw h5::exception("failed to delete a path");
+                }
+            }
+            _dataset = -1;
+
+            //
+            hsize_t dims[rank];
+            for (int i = 0; i < rank; i++) {
+                dims[i] = static_cast<hsize_t>(shape.dims[i]);
+            }
+
+            h5::unique_hid<H5Sclose> dataspace = H5Screate_simple(rank, dims, nullptr);
+            if (dataspace < 0) {
+                throw h5::exception("failed to create dataspace");
+            }
+
+            //
+            h5::unique_hid<H5Pclose> link_props = H5Pcreate(H5P_LINK_CREATE);
+            if (link_props < 0) {
+                throw h5::exception("failed to create link props");
+            }
+            if (H5Pset_create_intermediate_group(link_props, 1) < 0) {
+                throw h5::exception("failed to configure link props");
+            }
+
+            //
+            h5::unique_hid<H5Pclose> dataset_props = H5Pcreate(H5P_DATASET_CREATE);
+            if (dataset_props < 0) {
+                throw h5::exception("failed to create dataset props");
+            }
+
+            //
+            _dataset = H5Dcreate2(
+                _file,
+                _path.c_str(),
+                h5::storage_type<D>(),
+                dataspace,
+                link_props,
+                dataset_props,
+                H5P_DEFAULT
+            );
+            if (_dataset < 0) {
+                throw h5::exception("failed to create dataset");
+            }
+
+            auto const status = H5Dwrite(
+                _dataset,
+                h5::memory_type<T>(),
+                H5S_ALL,
+                H5S_ALL,
+                H5P_DEFAULT,
+                buf
+            );
+            if (status < 0) {
+                throw h5::exception("failed to write to dataset");
+            }
         }
 
     private:

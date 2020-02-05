@@ -1,61 +1,87 @@
-#include <cstdlib>
-#include <exception>
+#include <algorithm>
+#include <iterator>
 #include <random>
 #include <string>
+#include <vector>
 
 #include <h5.hpp>
 
 #include <catch.hpp>
 
+#include "utils.hpp"
 
-namespace
+
+TEST_CASE("dataset - opens existing dataset")
 {
-    std::string make_random_name(int length)
-    {
-        static std::mt19937 random;
+    temporary tmp;
+    copy("data/sample.h5", tmp.filename);
 
-        static char const charset[] = "abcdefghijklmnopqrstuvwxyz";
-        std::uniform_int_distribution<int> index{0, 25};
+    h5::file file(tmp.filename, "r");
 
-        std::string filename;
-        for (int i = 0; i < length; i++) {
-            filename += charset[index(random)];
-        }
-        return filename;
-    }
-
-
-    struct random_filename
-    {
-        std::string const name = "_data_" + make_random_name(10) + ".h5";
-
-        random_filename() = default;
-
-        ~random_filename()
-        {
-            std::system(("rm -f " + name).c_str());
-        }
-
-        random_filename(random_filename const&) = delete;
-    };
-
-
-    struct sample_data : random_filename
-    {
-        sample_data()
-        {
-            if (std::system(("cp data/sample.h5 " + name).c_str())) {
-                throw std::exception();
-            }
-        }
-    };
+    CHECK(file.dataset<int, 1>("simple/int_1").handle() >= 0);
+    CHECK(file.dataset<int, 2>("simple/int_2").handle() >= 0);
+    CHECK(file.dataset<float, 1>("simple/float_1").handle() >= 0);
+    CHECK(file.dataset<float, 2>("simple/float_2").handle() >= 0);
 }
 
-
-TEST_CASE("dataset - ")
+TEST_CASE("dataset::write - creates new dataset")
 {
-    sample_data sample;
-    h5::file file{sample.name, "r"};
-    auto dataset = file.dataset<float, 2>("simple/float_2");
+    temporary tmp;
+    h5::file file(tmp.filename, "w");
+
+    // Open a non-existing path.
+    h5::dataset<float, 3> dataset = file.dataset<float, 3>("data/foo/bar");
+    CHECK(dataset.handle() < 0);
+
+    // Write data.
+    h5::shape<3> const shape = {10, 2, 3};
+
+    std::vector<double> data;
+    std::mt19937 random;
+    std::generate_n(
+        std::back_inserter(data),
+        shape.size(),
+        [&] {
+            std::normal_distribution<double> normal;
+            return normal(random);
+        }
+    );
+
+    dataset.write(data.data(), shape);
+
+    // Now the dataset should have been resized.
+    CHECK(dataset.shape() == shape);
+
+    // TODO: read
+}
+
+TEST_CASE("dataset::write - replaces existing dataset")
+{
+    temporary tmp;
+    copy("data/sample.h5", tmp.filename);
+
+    h5::file file(tmp.filename, "r+");
+
+    // Open an existing dataset.
+    h5::dataset<float, 2> dataset = file.dataset<float, 2>("simple/float_2");
     CHECK(dataset.handle() >= 0);
+
+    // Prepare data.
+    h5::shape<2> const shape = {10, 2};
+
+    std::vector<double> data;
+    std::mt19937 random;
+    std::generate_n(
+        std::back_inserter(data),
+        shape.size(),
+        [&] {
+            std::normal_distribution<double> normal;
+            return normal(random);
+        }
+    );
+
+    dataset.write(data.data(), shape);
+
+    // Now the dataset should have been resized.
+    CHECK(dataset.shape() == shape);
 }

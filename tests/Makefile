@@ -50,5 +50,5 @@ main: $(OBJECTS)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 test_unique_hid.o: test_unique_hid.cc ../include/h5.hpp
-test_file.o: test_file.cc ../include/h5.hpp
-test_dataset.o: test_dataset.cc ../include/h5.hpp
+test_file.o: test_file.cc utils.hpp ../include/h5.hpp
+test_dataset.o: test_dataset.cc utils.hpp ../include/h5.hpp
