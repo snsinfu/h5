@@ -1,4 +1,4 @@
-// Copyright snsinfu 2019.
+// Copyright snsinfu 2020.
 // Distributed under the Boost Software License, Version 1.0.
 //
 // Permission is hereby granted, free of charge, to any person or organization
