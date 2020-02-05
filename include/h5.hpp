@@ -26,10 +26,15 @@
 #ifndef INCLUDED_SNSINFU_H5_HPP
 #define INCLUDED_SNSINFU_H5_HPP
 
+#include <algorithm>
+#include <cassert>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 #include <hdf5.h>
@@ -48,6 +53,53 @@ namespace h5
         {
         }
     };
+
+
+    // UTILITY ---------------------------------------------------------------
+
+    namespace detail
+    {
+        // Basic optional wrapper.
+        template<typename T>
+        class optional
+        {
+        public:
+            optional() = default;
+
+            optional(T const& value)
+                : _value{std::make_unique<T>(value)}
+            {
+            }
+
+            optional(optional const& other)
+                : _value{other ? std::make_unique<T>(*other) : nullptr}
+            {
+            }
+
+            optional& operator=(optional const& other)
+            {
+                optional tmp = other;
+                _value.swap(tmp._value);
+                return *this;
+            }
+
+            ~optional() = default;
+
+
+            explicit operator bool() const noexcept
+            {
+                return bool(_value);
+            }
+
+            T& operator*() const
+            {
+                return *_value;
+            }
+
+        private:
+            std::unique_ptr<T> _value;
+        };
+    }
 
 
     // RAII ------------------------------------------------------------------
@@ -209,7 +261,53 @@ namespace h5
     }
 
 
+    // AUTO CHUNKING ---------------------------------------------------------
+
+    namespace detail
+    {
+        template<int rank>
+        h5::shape<rank>
+        determine_chunk_size(h5::shape<rank> const& shape, std::size_t value_size)
+        {
+            // Heuristic from h5py/PyTables.
+
+            constexpr std::size_t KiB = 1024;
+            constexpr std::size_t MiB = 1024 * 1024;
+            constexpr std::size_t min_size = 8 * KiB;
+            constexpr std::size_t base_size = 24 * KiB;
+            constexpr std::size_t max_size = 1 * MiB;
+
+            auto const data_size = shape.size() * value_size;
+            auto const magnitude = std::log10(double(data_size) / MiB);
+            auto const raw_threshold = base_size << int(magnitude);
+            auto const threshold = std::min(std::max(raw_threshold, min_size), max_size);
+
+            auto chunk = shape;
+
+            for (int axis = 0; ; ++axis %= rank) {
+                auto const chunk_size = chunk.size() * value_size;
+                if (chunk_size < threshold) {
+                    break;
+                }
+
+                chunk.dims[axis] = (chunk.dims[axis] + 1) / 2;
+            }
+
+            assert(chunk.size() > 0);
+
+            return chunk;
+        }
+    }
+
+
     // DATASET HANDLING ------------------------------------------------------
+
+    struct dataset_options
+    {
+        detail::optional<int> compression;
+        detail::optional<int> scaleoffset;
+    };
+
 
     namespace detail
     {
@@ -261,10 +359,26 @@ namespace h5
         }
 
 
+        template<typename D>
+        H5Z_SO_scale_type_t determine_scaleoffset_type()
+        {
+            if (std::is_floating_point<D>::value) {
+                return H5Z_SO_FLOAT_DSCALE;
+            }
+            if (std::is_integral<D>::value) {
+                return H5Z_SO_INT;
+            }
+            throw h5::exception("cannot apply scaleoffset to specified datatype");
+        }
+
+
         // Creates a new simple dataset.
         template<typename D, int rank>
         h5::unique_hid<H5Dclose> create_simple_dataset(
-            hid_t file, std::string const& path, h5::shape<rank> const& shape
+            hid_t file,
+            std::string const& path,
+            h5::shape<rank> const& shape,
+            h5::dataset_options const& options
         )
         {
             hsize_t dims[rank];
@@ -286,10 +400,42 @@ namespace h5
                 throw h5::exception("failed to configure link props");
             }
 
-            // May add: Chunking, scaleoffset, shuffle, compression.
+            // Optional filters.
             h5::unique_hid<H5Pclose> dataset_props = H5Pcreate(H5P_DATASET_CREATE);
             if (dataset_props < 0) {
                 throw h5::exception("failed to create dataset props");
+            }
+
+            if (options.compression || options.scaleoffset) {
+                auto const chunk = detail::determine_chunk_size(shape, sizeof(D));
+
+                hsize_t chunk_dims[rank];
+                for (int i = 0; i < rank; i++) {
+                    chunk_dims[i] = chunk.dims[i];
+                }
+                if (H5Pset_chunk(dataset_props, rank, chunk_dims) < 0) {
+                    throw h5::exception("failed to set chunk size");
+                }
+            }
+
+            if (options.scaleoffset) {
+                auto const type = detail::determine_scaleoffset_type<D>();
+                auto const factor = *options.scaleoffset;
+
+                if (H5Pset_scaleoffset(dataset_props, type, factor) < 0) {
+                    throw h5::exception("failed to set shuffle filter");
+                }
+            }
+
+            if (options.compression) {
+                auto const level = static_cast<unsigned>(*options.compression);
+
+                if (H5Pset_shuffle(dataset_props) < 0) {
+                    throw h5::exception("failed to set shuffle filter");
+                }
+                if (H5Pset_deflate(dataset_props, level) < 0) {
+                    throw h5::exception("failed to set deflate filter");
+                }
             }
 
             h5::unique_hid<H5Dclose> dataset = H5Dcreate2(
@@ -389,7 +535,11 @@ namespace h5
         // be lost if writing a new dataset fails.
         //
         template<typename T>
-        void write(T const* buf, h5::shape<rank> const& shape)
+        void write(
+            T const* buf,
+            h5::shape<rank> const& shape,
+            h5::dataset_options const& options
+        )
         {
             if (detail::check_path_exists(_file, _path)) {
                 if (H5Ldelete(_file, _path.c_str(), H5P_DEFAULT) < 0) {
@@ -397,7 +547,9 @@ namespace h5
                 }
             }
             _dataset = -1;
-            _dataset = detail::create_simple_dataset<D, rank>(_file, _path, shape);
+            _dataset = detail::create_simple_dataset<D, rank>(
+                _file, _path, shape, options
+            );
 
             auto const status = H5Dwrite(
                 _dataset,
@@ -410,7 +562,21 @@ namespace h5
             if (status < 0) {
                 throw h5::exception("failed to write to dataset");
             }
+
+            if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
+                throw h5::exception("failed to flush changes to disk");
+            }
         }
+
+
+        // Calls `write` with default options.
+        template<typename T>
+        void write(T const* buf, h5::shape<rank> const& shape)
+        {
+            h5::dataset_options default_options;
+            return write(buf, shape, default_options);
+        }
+
 
     private:
         hid_t _file;
