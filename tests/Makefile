@@ -30,6 +30,7 @@ ARTIFACTS = \
 OBJECTS = \
   main.o \
   test_unique_hid.o \
+  test_shape.o \
   test_file.o \
   test_dataset.o
 
@@ -50,5 +51,6 @@ main: $(OBJECTS)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 test_unique_hid.o: test_unique_hid.cc ../include/h5.hpp
+test_shape.o: test_shape.cc ../include/h5.hpp
 test_file.o: test_file.cc utils.hpp ../include/h5.hpp
 test_dataset.o: test_dataset.cc utils.hpp ../include/h5.hpp
