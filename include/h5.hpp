@@ -138,6 +138,8 @@ namespace h5
 
     // SHAPE -----------------------------------------------------------------
 
+    // Shape of a simple dataset (multi-dimensional array). The `rank` must be
+    // positive (i.e., cannot be zero).
     template<int rank>
     struct shape
     {
