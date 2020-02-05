@@ -262,10 +262,30 @@ namespace h5
     }
 
 
+    // Provides read/write access to an HDF5 dataset.
+    //
+    // The type `D` asserts the expected datatype on disk. `rank` asserts the
+    // expected rank of the dataset. Zero `rank` means a scalar dataset.
+    //
     template<typename D, int rank>
     class dataset
     {
     public:
+        static_assert(rank > 0, "rank must be positive");
+
+
+        // Tries to open a simple dataset on the `path` in `file`.
+        //
+        // If the path does not exist, the constructor just initializes the
+        // object in the empty state. The object can be used to create a new
+        // dataset on the path by calling `write`.
+        //
+        // If the path is not a simple dataset, or if the type and/or rank
+        // assertion fails, the constructor throws an `h5::exception`.
+        //
+        // The behavior is undefined if a `dataset` object outlives `file`.
+        // Make sure `dataset` is destroyed before the file it originates.
+        //
         dataset(hid_t file, std::string const& path)
             : _file{file}, _path{path}
         {
@@ -280,19 +300,43 @@ namespace h5
             }
         }
 
+
+        // Returns `true` if the object holds a dataset.
+        explicit operator bool() const noexcept
+        {
+            return _dataset >= 0;
+        }
+
+
+        // Returns the underlying dataset HID. Returns -1 if the object does
+        // not hold a dataset.
         hid_t handle() const noexcept
         {
             return _dataset;
         }
 
+
+        // Retrieves the shape of the dataset. Returns a zero shape if the
+        // object does not hold a dataset.
         h5::shape<rank> shape() const noexcept
         {
+            if (_dataset < 0) {
+                return {};
+            }
             return detail::check_dataset_rank<rank>(_dataset);
         }
+
 
         template<typename T>
         void read(T* buf, h5::shape<rank> const& shape);
 
+
+        // Writes a new dataset of given shape.
+        //
+        // The function writes flattened data pointed-to by `buf` to the path.
+        // It always creates a new dataset, clobbering existing one if any.
+        // Ancestor groups are created if not exist.
+        //
         template<typename T>
         void write(T const* buf, h5::shape<rank> const& shape)
         {
