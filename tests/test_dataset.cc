@@ -324,6 +324,17 @@ TEST_CASE("dataset - can read and write numeric and string scalar")
         actual = roundtrip_scalar<double>(file, expect);
         CHECK(actual == expect);
     }
+
+    SECTION("str")
+    {
+        std::string const expect = "Lorem ipsum dolor sit amet";
+        std::string actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip_scalar<h5::str>(file, expect);
+        CHECK(actual == expect);
+    }
 }
 
 TEST_CASE("dataset - can read and write numeric and string array")
@@ -384,6 +395,19 @@ TEST_CASE("dataset - can read and write numeric and string array")
         actual = roundtrip<double>(file, expect);
         CHECK(actual == expect);
     }
+
+    SECTION("str")
+    {
+        std::vector<std::string> const expect = {
+            "The quick brown fox", "jumps over", "the lazy dog", "."
+        };
+        std::vector<std::string> actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip<h5::str>(file, expect);
+        CHECK(actual == expect);
+    }
 }
 
 TEST_CASE("dataset - D parameter")
@@ -399,4 +423,5 @@ TEST_CASE("dataset - D parameter")
     file.dataset<h5::u16>("u16").write(0);
     file.dataset<h5::u32>("u32").write(0);
     file.dataset<h5::u64>("u64").write(0);
+    file.dataset<h5::str>("str").write(std::string(""));
 }

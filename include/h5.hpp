@@ -36,6 +36,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include <hdf5.h>
 
@@ -160,6 +161,34 @@ namespace h5
     };
 
 
+    namespace detail
+    {
+        template<typename P>
+        class h5_memory_guard
+        {
+        public:
+            h5_memory_guard(P const* pointers, std::size_t count)
+                : _pointers{pointers}, _count{count}
+            {
+            }
+
+            ~h5_memory_guard() noexcept
+            {
+                for (std::size_t i = 0; i < _count; i++) {
+                    H5free_memory(static_cast<void*>(_pointers[i]));
+                }
+            }
+
+            h5_memory_guard(h5_memory_guard const&) = delete;
+            h5_memory_guard& operator=(h5_memory_guard const&) = delete;
+
+        private:
+            P const* _pointers;
+            std::size_t _count;
+        };
+    }
+
+
     // DATA TYPES ------------------------------------------------------------
 
     using i8 = std::int8_t;
@@ -232,6 +261,8 @@ namespace h5
     template<> inline hid_t memory_type<unsigned long long>() { return H5T_NATIVE_ULLONG; }
     template<> inline hid_t memory_type<float>() { return H5T_NATIVE_FLOAT; }
     template<> inline hid_t memory_type<double>() { return H5T_NATIVE_DOUBLE; }
+    template<> inline hid_t memory_type<char*>() { return detail::string_datatype(); }
+    template<> inline hid_t memory_type<char const*>() { return detail::string_datatype(); }
 
 
     // SHAPE -----------------------------------------------------------------
@@ -579,6 +610,61 @@ namespace h5
 
             return dataset;
         }
+
+
+        // Reads dataset into given buffer.
+        template<typename T>
+        void read_dataset(hid_t dataset, T* buf, std::size_t)
+        {
+            auto const status = H5Dread(
+                dataset, h5::memory_type<T>(), H5S_ALL, H5S_ALL, H5P_DEFAULT, buf
+            );
+            if (status < 0) {
+                throw h5::exception("failed to read from dataset");
+            }
+        }
+
+        template<>
+        inline
+        void read_dataset<std::string>(hid_t dataset, std::string* buf, std::size_t size)
+        {
+            std::vector<char*> tmpbuf(size, nullptr);
+            detail::h5_memory_guard<char*> guard(tmpbuf.data(), tmpbuf.size());
+
+            read_dataset(dataset, tmpbuf.data(), size);
+
+            for (std::size_t i = 0; i < size; i++) {
+                // The stored string can be NULL.
+                buf[i] = tmpbuf[i] ? tmpbuf[i] : "";
+            }
+        }
+
+
+        // Writes given buffer into dataset.
+        template<typename T>
+        void write_dataset(hid_t dataset, T const* buf, std::size_t)
+        {
+            auto const status = H5Dwrite(
+                dataset, h5::memory_type<T>(), H5S_ALL, H5S_ALL, H5P_DEFAULT, buf
+            );
+            if (status < 0) {
+                throw h5::exception("failed to write to dataset");
+            }
+        }
+
+        template<>
+        inline
+        void write_dataset<std::string>(
+            hid_t dataset, std::string const* buf, std::size_t size
+        )
+        {
+            std::vector<char const*> tmpbuf(size, nullptr);
+            for (std::size_t i = 0; i < size; i++) {
+                tmpbuf[i] = buf[i].c_str();
+            }
+
+            write_dataset(dataset, tmpbuf.data(), size);
+        }
     }
 
 
@@ -665,12 +751,7 @@ namespace h5
                 throw h5::exception("shape mismatch when reading");
             }
 
-            auto const status = H5Dread(
-                _dataset, h5::memory_type<T>(), H5S_ALL, H5S_ALL, H5P_DEFAULT, buf
-            );
-            if (status < 0) {
-                throw h5::exception("failed to read from dataset");
-            }
+            detail::read_dataset(_dataset, buf, shape.size());
         }
 
 
@@ -707,17 +788,7 @@ namespace h5
                 _file, _path, shape, options
             );
 
-            auto const status = H5Dwrite(
-                _dataset,
-                h5::memory_type<T>(),
-                H5S_ALL,
-                H5S_ALL,
-                H5P_DEFAULT,
-                buf
-            );
-            if (status < 0) {
-                throw h5::exception("failed to write to dataset");
-            }
+            detail::write_dataset(_dataset, buf, shape.size());
 
             if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
                 throw h5::exception("failed to flush changes to disk");
@@ -801,12 +872,7 @@ namespace h5
         {
             detail::check_dataset_rank<0>(_dataset);
 
-            auto const status = H5Dread(
-                _dataset, h5::memory_type<T>(), H5S_ALL, H5S_ALL, H5P_DEFAULT, &value
-            );
-            if (status < 0) {
-                throw h5::exception("failed to read from dataset");
-            }
+            detail::read_dataset(_dataset, &value, 1);
         }
 
 
@@ -834,17 +900,7 @@ namespace h5
             _dataset = -1;
             _dataset = detail::create_scalar_dataset<D>(_file, _path);
 
-            auto const status = H5Dwrite(
-                _dataset,
-                h5::memory_type<T>(),
-                H5S_ALL,
-                H5S_ALL,
-                H5P_DEFAULT,
-                &value
-            );
-            if (status < 0) {
-                throw h5::exception("failed to write to dataset");
-            }
+            detail::write_dataset(_dataset, &value, 1);
 
             if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
                 throw h5::exception("failed to flush changes to disk");

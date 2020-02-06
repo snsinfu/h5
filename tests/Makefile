@@ -21,7 +21,7 @@ DBGFLAGS = \
   -fsanitize=address
 
 OPTFLAGS = \
-  -O2
+  -Og
 
 ARTIFACTS = \
   main \
