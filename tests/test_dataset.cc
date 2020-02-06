@@ -34,10 +34,84 @@ TEST_CASE("dataset - opens existing dataset")
 
     h5::file file(tmp.filename, "r");
 
-    CHECK(file.dataset<int, 1>("simple/int_1").handle() >= 0);
-    CHECK(file.dataset<int, 2>("simple/int_2").handle() >= 0);
-    CHECK(file.dataset<float, 1>("simple/float_1").handle() >= 0);
-    CHECK(file.dataset<float, 2>("simple/float_2").handle() >= 0);
+    CHECK(file.dataset<int, 1>("simple/int_1"));
+    CHECK(file.dataset<int, 2>("simple/int_2"));
+    CHECK(file.dataset<float, 1>("simple/float_1"));
+    CHECK(file.dataset<float, 2>("simple/float_2"));
+}
+
+TEST_CASE("dataset::read - reads existing dataset")
+{
+    temporary tmp;
+    copy("data/sample.h5", tmp.filename);
+
+    h5::file file(tmp.filename, "r");
+
+    SECTION("int vector")
+    {
+        std::vector<int> const expect = {
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9
+        };
+        h5::dataset<int, 1> dataset = file.dataset<int, 1>("simple/int_1");
+        REQUIRE(dataset);
+        REQUIRE(dataset.shape() == h5::shape<1>{10});
+
+        std::vector<int> actual(10);
+        dataset.read(actual.data(), {10});
+        CHECK(actual == expect);
+    }
+
+    SECTION("int matrix")
+    {
+        std::vector<int> const expect = {
+            0, -1, -2, -3, -4,
+            1, 0, -1, -2, -3,
+            2, 1, 0, -1, -2,
+            3, 2, 1, 0, -1,
+            4, 3, 2, 1, 0,
+            5, 4, 3, 2, 1,
+            6, 5, 4, 3, 2,
+            7, 6, 5, 4, 3,
+            8, 7, 6, 5, 4,
+            9, 8, 7, 6, 5
+        };
+        h5::dataset<int, 2> dataset = file.dataset<int, 2>("simple/int_2");
+        REQUIRE(dataset);
+        REQUIRE(dataset.shape() == h5::shape<2>{10, 5});
+
+        std::vector<int> actual(50);
+        dataset.read(actual.data(), h5::shape<2>{10, 5});
+        CHECK(actual == expect);
+    }
+}
+
+TEST_CASE("dataset::read - throws if dataset does not exist")
+{
+    temporary tmp;
+    copy("data/sample.h5", tmp.filename);
+
+    h5::file file(tmp.filename, "r");
+
+    h5::dataset<int, 2> dataset = file.dataset<int, 2>("non-existing-dataset");
+    REQUIRE_FALSE(dataset);
+
+    int buf[50];
+    CHECK_THROWS_AS(dataset.read(buf, {5, 10}), h5::exception);
+}
+
+TEST_CASE("dataset::read - throws if shapes mismatch")
+{
+    temporary tmp;
+    copy("data/sample.h5", tmp.filename);
+
+    h5::file file(tmp.filename, "r");
+
+    h5::dataset<int, 2> dataset = file.dataset<int, 2>("simple/int_2");
+    REQUIRE(dataset.shape() == h5::shape<2>{10, 5});
+
+    int buf[50];
+    CHECK_NOTHROW(dataset.read(buf, {10, 5}));
+    CHECK_THROWS_AS(dataset.read(buf, {5, 10}), h5::exception);
 }
 
 TEST_CASE("dataset::write - creates new dataset")
@@ -47,7 +121,7 @@ TEST_CASE("dataset::write - creates new dataset")
 
     // Open a non-existing path.
     h5::dataset<float, 3> dataset = file.dataset<float, 3>("data/foo/bar");
-    CHECK(dataset.handle() < 0);
+    CHECK_FALSE(dataset);
 
     // Write data.
     h5::shape<3> const shape = {10, 2, 3};
@@ -65,10 +139,9 @@ TEST_CASE("dataset::write - creates new dataset")
 
     dataset.write(data.data(), shape);
 
-    // Now the dataset should have been resized.
+    // Now the dataset exists and has the expected size.
+    CHECK(dataset);
     CHECK(dataset.shape() == shape);
-
-    // TODO: read
 }
 
 TEST_CASE("dataset::write - replaces existing dataset")
@@ -80,10 +153,10 @@ TEST_CASE("dataset::write - replaces existing dataset")
 
     // Open an existing dataset.
     h5::dataset<float, 2> dataset = file.dataset<float, 2>("simple/float_2");
-    CHECK(dataset.handle() >= 0);
+    CHECK(dataset);
 
-    // Prepare data.
-    h5::shape<2> const shape = {10, 2};
+    // Overwrite the dataset.
+    h5::shape<2> const shape = {100, 100};
 
     std::vector<double> data;
     std::mt19937 random;
@@ -99,6 +172,7 @@ TEST_CASE("dataset::write - replaces existing dataset")
     dataset.write(data.data(), shape);
 
     // Now the dataset should have been resized.
+    CHECK(dataset);
     CHECK(dataset.shape() == shape);
 }
 
@@ -118,25 +192,66 @@ TEST_CASE("dataset::write - applies compression")
         }
     );
 
-    temporary tmp_raw;
-    temporary tmp_com;
-    h5::file file_raw(tmp_raw.filename, "w");
-    h5::file file_com(tmp_com.filename, "w");
+    SECTION("deflate")
+    {
+        temporary tmp_raw;
+        temporary tmp_com;
+        h5::file file_raw(tmp_raw.filename, "w");
+        h5::file file_com(tmp_com.filename, "w");
 
-    h5::dataset_options options;
-    options.compression = 4;
-    options.scaleoffset = 3;
+        h5::dataset_options options;
+        options.compression = 4;
+        file_raw.dataset<float, 3>("data").write(data.data(), shape);
+        file_com.dataset<float, 3>("data").write(data.data(), shape, options);
 
-    file_raw.dataset<float, 3>("data").write(data.data(), shape);
-    file_com.dataset<float, 3>("data").write(data.data(), shape, options);
+        // Compression reduces the size.
+        hsize_t raw_size;
+        hsize_t com_size;
+        REQUIRE(H5Fget_filesize(file_raw.handle(), &raw_size) >= 0);
+        REQUIRE(H5Fget_filesize(file_com.handle(), &com_size) >= 0);
+        CHECK(raw_size > com_size);
+    }
 
-    // Check if the compression reduces file size.
-    hsize_t raw_size;
-    hsize_t com_size;
-    REQUIRE(H5Fget_filesize(file_raw.handle(), &raw_size) >= 0);
-    REQUIRE(H5Fget_filesize(file_com.handle(), &com_size) >= 0);
+    SECTION("scale-offset")
+    {
+        temporary tmp_raw;
+        temporary tmp_com;
+        h5::file file_raw(tmp_raw.filename, "w");
+        h5::file file_com(tmp_com.filename, "w");
 
-    CHECK(raw_size > com_size);
+        h5::dataset_options options;
+        options.scaleoffset = 3;
+        file_raw.dataset<float, 3>("data").write(data.data(), shape);
+        file_com.dataset<float, 3>("data").write(data.data(), shape, options);
+
+        // Compression reduces the size.
+        hsize_t raw_size;
+        hsize_t com_size;
+        REQUIRE(H5Fget_filesize(file_raw.handle(), &raw_size) >= 0);
+        REQUIRE(H5Fget_filesize(file_com.handle(), &com_size) >= 0);
+        CHECK(raw_size > com_size);
+    }
+
+    SECTION("scale-offset + deflate")
+    {
+        temporary tmp_raw;
+        temporary tmp_com;
+        h5::file file_raw(tmp_raw.filename, "w");
+        h5::file file_com(tmp_com.filename, "w");
+
+        h5::dataset_options options;
+        options.compression = 4;
+        options.scaleoffset = 3;
+        file_raw.dataset<float, 3>("data").write(data.data(), shape);
+        file_com.dataset<float, 3>("data").write(data.data(), shape, options);
+
+        // Compression reduces the size.
+        hsize_t raw_size;
+        hsize_t com_size;
+        REQUIRE(H5Fget_filesize(file_raw.handle(), &raw_size) >= 0);
+        REQUIRE(H5Fget_filesize(file_com.handle(), &com_size) >= 0);
+        CHECK(raw_size > com_size);
+    }
 }
 
 TEST_CASE("dataset - can read and write numeric and string array")
