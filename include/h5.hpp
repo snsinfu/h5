@@ -59,7 +59,7 @@ namespace h5
 
     namespace detail
     {
-        // Basic optional wrapper.
+        // Basic optional wrapper for C++14 compilers.
         template<typename T>
         class optional
         {
@@ -105,6 +105,10 @@ namespace h5
     // RAII ------------------------------------------------------------------
 
     // Thin RAII wrapper for an hid_t.
+    //
+    // The `close_fn` template argument is the HDF5 function used to release
+    // an HID (e.g., `H5Fclose`).
+    //
     template<herr_t(& close_fn)(hid_t)>
     class unique_hid
     {
@@ -112,7 +116,7 @@ namespace h5
         // The default constructor creates an empty object.
         unique_hid() = default;
 
-        // The constructor takes
+        // The constructor takes the ownership of given HID.
         unique_hid(hid_t hid)
             : _hid{hid}
         {
@@ -218,6 +222,7 @@ namespace h5
     template<int rank>
     struct shape
     {
+        // Size of each dimension.
         std::size_t dims[rank] = {};
 
         // Returns the total number of elements in the hypercube of this shape.
@@ -288,11 +293,12 @@ namespace h5
 
     namespace detail
     {
+        // Computes a good chunk shape for the given dataset shape.
         template<int rank>
         h5::shape<rank>
         determine_chunk_size(h5::shape<rank> const& shape, std::size_t value_size)
         {
-            // Heuristic from h5py/PyTables.
+            // Heuristics from h5py/PyTables.
 
             constexpr std::size_t KiB = 1024;
             constexpr std::size_t MiB = 1024 * 1024;
@@ -325,9 +331,24 @@ namespace h5
 
     // DATASET HANDLING ------------------------------------------------------
 
+    // Optional parameters passed to `dataset::write`.
     struct dataset_options
     {
+        // Enables deflate compression when set. The value designates the
+        // compression level: 0 for none, 1 for the fastest, 9 for the best.
+        //
+        // The minimum, fastest compression level 1 tends to be enough when
+        // `scaleoffset` is set to a proper value.
+        //
         detail::optional<int> compression;
+
+        // Enables "scale-offset" lossy compression when set.
+        //
+        // This option is effective only for integral and floating-point
+        // dataset. For integral dataset, the value designates the number of
+        // retained bits. For floating-point dataset, the value designates the
+        // base-10 exponent of the scaling factor.
+        //
         detail::optional<int> scaleoffset;
     };
 
@@ -546,6 +567,15 @@ namespace h5
 
         // Reads all data from the dataset.
         //
+        // The function throws an `h5::exception` if dataset is not open or
+        // the given `shape` is not the same as that of dataset.
+        //
+        // Parameters:
+        //   T     = Type of the buffer. This must be compatible with the
+        //           dataset type `D`.
+        //   buf   = Pointer to the buffer.
+        //   shape = Shape of the buffer.
+        //
         template<typename T>
         void read(T* buf, h5::shape<rank> const& shape)
         {
@@ -570,6 +600,13 @@ namespace h5
         //
         // XXX: Current implementation is not exception safe. Old dataset will
         // be lost if writing a new dataset fails.
+        //
+        // Parameters:
+        //   T       = Type of the buffer. This must be compatible with the
+        //             dataset type `D`.
+        //   buf     = Pointer to the buffer.
+        //   shape   = Shape of the buffer.
+        //   options = Options for the newly created dataset.
         //
         template<typename T>
         void write(
