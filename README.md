@@ -27,6 +27,32 @@ your include directory.
 
 ## Usage
 
+The usage is as easy as this:
+
+```c++
+h5::file file("tests/data/sample.h5", "r+");
+
+// Reading existing 2-dimensional dataset
+h5::dataset<int, 2> dataset = file.dataset<int, 2>("simple/int_2");
+h5::shape<2> shape = dataset.shape();
+std::vector<int> buf(shape.size());
+dataset.read(buf.data(), shape);
+
+// Writing new 10x10x10 dataset
+std::vector<float> data(1000);
+file.dataset<float, 3>("my/new/dataset").write(data.data(), {10, 10, 10});
+```
+
+API:
+
+- [h5::file](#h5file)
+  - [file::file(filename, mode)](#filefilefilename-mode)
+  - [file::dataset<D, rank>(path)](#filedatasetd-rankpath)
+- [h5::dataset](#h5dataset)
+  - [dataset::shape()](#datasetshape)
+  - [dataset::read(buf, shape)](#datasetreadbuf-shape)
+  - [dataset::write(buf, shape, options)](#datasetwritebuf-shape-options)
+
 ### h5::file
 
 ```c++
