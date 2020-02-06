@@ -104,6 +104,22 @@ the rank is not as specified.
 This function does not fail if `path` does not exist. In that case the returned
 dataset object is in "empty" state, disallowing `read` and allowing `write`.
 
+Expected dataset types:
+
+| D       | Description                |
+|---------|----------------------------|
+| h5::i8  | 8-bit signed jinteger      |
+| h5::i16 | 16-bit signed integer      |
+| h5::i32 | 32-bit signed integer      |
+| h5::i64 | 64-bit signed integer      |
+| h5::u8  | 8-bit unsigned jinteger    |
+| h5::u16 | 16-bit unsigned integer    |
+| h5::u32 | 32-bit unsigned integer    |
+| h5::u64 | 64-bit unsigned integer    |
+| h5::f32 | 32-bit IEEE floating-point |
+| h5::f64 | 64-bit IEEE floating-point |
+| h5::str | C-style UTF-8 string       |
+
 ### h5::dataset
 
 ```c++
@@ -140,6 +156,9 @@ Reads dataset into a buffer. The dataset must exist.
 The buffer type `T` may be different from the dataset type `D` as long as the
 conversion is supported by the HDF5 library.
 
+One exception is `T = std::string` which this library supports conversion from
+`D = h5::str` dataset (internally it is `char*`).
+
 #### dataset::write(buf, shape, options)
 
 Writes data in a buffer to the dataset. This function always creates a new
@@ -153,6 +172,9 @@ dataset and overwrites existing one if any.
 The buffer type `T` may be different from the dataset type `D` as long as the
 conversion is supported by the HDF5 library.
 
+One exception is `T = std::string` which this library supports conversion to
+`D = h5::str` dataset (internally it is `char*`).
+
 | Option      | Description                           |
 |-------------|---------------------------------------|
 | compression | Deflate compression level (0-9).      |
@@ -163,9 +185,9 @@ conversion is supported by the HDF5 library.
 Tests require POSIX environment and hdf5 development files.
 
 ```sh
-$ git clone https://github.com/snsinfu/h5.git
-$ cd h5/tests
-$ make
+git clone https://github.com/snsinfu/h5.git
+cd h5/tests
+make
 ```
 
 ## License
