@@ -547,8 +547,22 @@ namespace h5
         }
 
 
+        // Reads all data from the dataset.
+        //
         template<typename T>
-        void read(T* buf, h5::shape<rank> const& shape);
+        void read(T* buf, h5::shape<rank> const& shape)
+        {
+            if (this->shape() != shape) {
+                throw h5::exception("shape mismatch when reading");
+            }
+
+            auto const status = H5Dread(
+                _dataset, h5::memory_type<T>(), H5S_ALL, H5S_ALL, H5P_DEFAULT, buf
+            );
+            if (status < 0) {
+                throw h5::exception("failed to read from dataset");
+            }
+        }
 
 
         // Writes a new dataset of given shape.

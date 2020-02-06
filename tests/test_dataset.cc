@@ -19,10 +19,10 @@ namespace
         auto dataset = file.dataset<D, 1>("data");
         dataset.write(data.data(), {data.size()});
 
-        // std::vector<T> buf(data.size());
-        // dataset.read(buf.data(), {buf.size()});
+        std::vector<T> buf(dataset.shape().dims[0]);
+        dataset.read(buf.data(), {buf.size()});
 
-        return data;
+        return buf;
     }
 }
 
@@ -208,6 +208,15 @@ TEST_CASE("dataset - can read and write numeric and string array")
         temporary tmp;
         h5::file file(tmp.filename, "w");
         actual = roundtrip<char*>(file, expect);
-        CHECK(actual == expect);
+
+        std::vector<std::string> expect_str(expect.begin(), expect.end());
+        std::vector<std::string> actual_str(actual.begin(), actual.end());
+        CHECK(actual_str == expect_str);
+
+        // Need to manually free memory. Maybe it's not a good idea to allow
+        // reading string dataset as char* array.
+        for (auto* ptr : actual) {
+            H5free_memory(const_cast<char*>(ptr));
+        }
     }
 }
