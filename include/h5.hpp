@@ -162,10 +162,18 @@ namespace h5
 
     // DATA TYPES ------------------------------------------------------------
 
+    using i8 = std::int8_t;
+    using i16 = std::int16_t;
     using i32 = std::int32_t;
-    using u32 = std::uint32_t;
     using i64 = std::int64_t;
+    using u8 = std::uint8_t;
+    using u16 = std::uint16_t;
+    using u32 = std::uint32_t;
     using u64 = std::uint64_t;
+    using f32 = float;
+    using f64 = double;
+    using str = char*;
+
 
     namespace detail
     {
@@ -197,20 +205,31 @@ namespace h5
     template<typename T>
     hid_t storage_type() = delete;
 
+    template<> inline hid_t storage_type<h5::i8>() { return H5T_STD_I8LE; }
+    template<> inline hid_t storage_type<h5::i16>() { return H5T_STD_I16LE; }
     template<> inline hid_t storage_type<h5::i32>() { return H5T_STD_I32LE; }
     template<> inline hid_t storage_type<h5::i64>() { return H5T_STD_I64LE; }
+    template<> inline hid_t storage_type<h5::u8>() { return H5T_STD_U8LE; }
+    template<> inline hid_t storage_type<h5::u16>() { return H5T_STD_U16LE; }
     template<> inline hid_t storage_type<h5::u32>() { return H5T_STD_U32LE; }
     template<> inline hid_t storage_type<h5::u64>() { return H5T_STD_U64LE; }
-    template<> inline hid_t storage_type<float>() { return H5T_IEEE_F32LE; }
-    template<> inline hid_t storage_type<double>() { return H5T_IEEE_F64LE; }
+    template<> inline hid_t storage_type<h5::f32>() { return H5T_IEEE_F32LE; }
+    template<> inline hid_t storage_type<h5::f64>() { return H5T_IEEE_F64LE; }
+    template<> inline hid_t storage_type<h5::str>() { return detail::string_datatype(); }
 
     template<typename T>
     hid_t memory_type() = delete;
 
-    template<> inline hid_t memory_type<h5::i32>() { return H5T_NATIVE_INT32; }
-    template<> inline hid_t memory_type<h5::i64>() { return H5T_NATIVE_INT64; }
-    template<> inline hid_t memory_type<h5::u32>() { return H5T_NATIVE_UINT32; }
-    template<> inline hid_t memory_type<h5::u64>() { return H5T_NATIVE_UINT64; }
+    template<> inline hid_t memory_type<signed char>() { return H5T_NATIVE_SCHAR; }
+    template<> inline hid_t memory_type<short>() { return H5T_NATIVE_SHORT; }
+    template<> inline hid_t memory_type<int>() { return H5T_NATIVE_INT; }
+    template<> inline hid_t memory_type<long>() { return H5T_NATIVE_LONG; }
+    template<> inline hid_t memory_type<long long>() { return H5T_NATIVE_LLONG; }
+    template<> inline hid_t memory_type<unsigned char>() { return H5T_NATIVE_UCHAR; }
+    template<> inline hid_t memory_type<unsigned short>() { return H5T_NATIVE_USHORT; }
+    template<> inline hid_t memory_type<unsigned int>() { return H5T_NATIVE_UINT; }
+    template<> inline hid_t memory_type<unsigned long>() { return H5T_NATIVE_ULONG; }
+    template<> inline hid_t memory_type<unsigned long long>() { return H5T_NATIVE_ULLONG; }
     template<> inline hid_t memory_type<float>() { return H5T_NATIVE_FLOAT; }
     template<> inline hid_t memory_type<double>() { return H5T_NATIVE_DOUBLE; }
 

@@ -385,3 +385,18 @@ TEST_CASE("dataset - can read and write numeric and string array")
         CHECK(actual == expect);
     }
 }
+
+TEST_CASE("dataset - D parameter")
+{
+    temporary tmp;
+    h5::file file(tmp.filename, "w");
+
+    file.dataset<h5::i8>("i8").write(0);
+    file.dataset<h5::i16>("i16").write(0);
+    file.dataset<h5::i32>("i32").write(0);
+    file.dataset<h5::i64>("i64").write(0);
+    file.dataset<h5::u8>("u8").write(0);
+    file.dataset<h5::u16>("u16").write(0);
+    file.dataset<h5::u32>("u32").write(0);
+    file.dataset<h5::u64>("u64").write(0);
+}
