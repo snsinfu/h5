@@ -19,9 +19,18 @@
 
 ## Install
 
-Download the single header file [h5.hpp][raw] into your include directory. Or,
-add this repository to your project as a git submodule and add `h5/include` to
-your include directory.
+Download the single header file [h5.hpp][raw] into your include directory:
+
+```
+curl -Lo include/h5.hpp https://github.com/snsinfu/h5/raw/master/include/h5.hpp
+```
+
+Alternatively, add this repository to your project as a git submodule and add
+`-I submodules/h5/include` to compile option:
+
+```
+git submodule add https://github.com/snsinfu/h5 submodules/h5
+```
 
 [raw]: https://github.com/snsinfu/h5/raw/master/include/h5.hpp
 
@@ -30,17 +39,18 @@ your include directory.
 The usage is as easy as this:
 
 ```c++
-h5::file file("tests/data/sample.h5", "r+");
+h5::file file("data.h5", "r+");
 
-// Reading existing 2-dimensional dataset
-h5::dataset<int, 2> dataset = file.dataset<int, 2>("simple/int_2");
-h5::shape<2> shape = dataset.shape();
-std::vector<int> buf(shape.size());
-dataset.read(buf.data(), shape);
+// h5 operates on multi-dimensional array in C layout. Here's a buffer
+// containing a 10x10x10 tensor.
+std::vector<float> buf(1000);
+h5::shape<3> shape = {10, 10, 10};
 
-// Writing new 10x10x10 dataset
-std::vector<float> data(1000);
-file.dataset<float, 3>("my/new/dataset").write(data.data(), {10, 10, 10});
+// Write the 10x10x10 dataset.
+file.dataset<float, 3>("my/new/dataset").write(buf.data(), shape);
+
+// Read back into the buffer.
+file.dataset<float, 3>("my/new/dataset").read(buf.data(), shape);
 ```
 
 API:
