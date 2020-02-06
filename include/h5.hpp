@@ -199,7 +199,6 @@ namespace h5
     template<> inline hid_t storage_type<h5::u64>() { return H5T_STD_U64LE; }
     template<> inline hid_t storage_type<float>() { return H5T_IEEE_F32LE; }
     template<> inline hid_t storage_type<double>() { return H5T_IEEE_F64LE; }
-    template<> inline hid_t storage_type<char*>() { return detail::string_datatype(); }
 
     template<typename T>
     hid_t memory_type() = delete;
@@ -210,8 +209,6 @@ namespace h5
     template<> inline hid_t memory_type<h5::u64>() { return H5T_NATIVE_UINT64; }
     template<> inline hid_t memory_type<float>() { return H5T_NATIVE_FLOAT; }
     template<> inline hid_t memory_type<double>() { return H5T_NATIVE_DOUBLE; }
-    template<> inline hid_t memory_type<char*>() { return detail::string_datatype(); }
-    template<> inline hid_t memory_type<char const*>() { return detail::string_datatype(); }
 
 
     // SHAPE -----------------------------------------------------------------

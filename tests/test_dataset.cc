@@ -197,26 +197,4 @@ TEST_CASE("dataset - can read and write numeric and string array")
         actual = roundtrip<double>(file, expect);
         CHECK(actual == expect);
     }
-
-    SECTION("string")
-    {
-        std::vector<char const*> const expect = {
-            "The quick brown fox", "jumps over", "the lazy dog", "."
-        };
-        std::vector<char const*> actual;
-
-        temporary tmp;
-        h5::file file(tmp.filename, "w");
-        actual = roundtrip<char*>(file, expect);
-
-        std::vector<std::string> expect_str(expect.begin(), expect.end());
-        std::vector<std::string> actual_str(actual.begin(), actual.end());
-        CHECK(actual_str == expect_str);
-
-        // Need to manually free memory. Maybe it's not a good idea to allow
-        // reading string dataset as char* array.
-        for (auto* ptr : actual) {
-            H5free_memory(const_cast<char*>(ptr));
-        }
-    }
 }
