@@ -11,6 +11,22 @@
 #include "utils.hpp"
 
 
+namespace
+{
+    template<typename D, typename T>
+    std::vector<T> roundtrip(h5::file& file, std::vector<T> const& data)
+    {
+        auto dataset = file.dataset<D, 1>("data");
+        dataset.write(data.data(), {data.size()});
+
+        // std::vector<T> buf(data.size());
+        // dataset.read(buf.data(), {buf.size()});
+
+        return data;
+    }
+}
+
+
 TEST_CASE("dataset - opens existing dataset")
 {
     temporary tmp;
@@ -121,4 +137,77 @@ TEST_CASE("dataset::write - applies compression")
     REQUIRE(H5Fget_filesize(file_com.handle(), &com_size) >= 0);
 
     CHECK(raw_size > com_size);
+}
+
+TEST_CASE("dataset - can read and write numeric and string array")
+{
+    SECTION("i32")
+    {
+        std::vector<h5::i32> const expect = {
+            12345678, -90123456, 78901234, -56789012, 34567890,
+            -12345678, 90123456, -78901234, 56789012, -34567890
+        };
+        std::vector<h5::i32> actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip<h5::i32>(file, expect);
+        CHECK(actual == expect);
+    }
+
+    SECTION("u32")
+    {
+        std::vector<h5::u32> const expect = {
+            0x12345678, 0x90123456, 0x78901234, 0x56789012, 0x34567890,
+            0xabcdefab, 0xcdefabcd, 0xefabcdef
+        };
+        std::vector<h5::u32> actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip<h5::u32>(file, expect);
+        CHECK(actual == expect);
+    }
+
+    SECTION("f32")
+    {
+        std::vector<float> const expect = {
+            1.23456F, -7.89012F, 3.45678F, -9.01234F, 5.67890F,
+            -1.23456F, 7.89012F, -3.45678F, 9.01234F, -5.67890F
+        };
+        std::vector<float> actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip<float>(file, expect);
+        CHECK(actual == expect);
+    }
+
+    SECTION("f64")
+    {
+        std::vector<double> const expect = {
+            1.2345678901234, -5.6789012345678, 9.0123456789012,
+            -3.4567890123456, 7.8901234567890, -1.2345678901234,
+            5.6789012345678, -9.0123456789012, 3.4567890123456
+        };
+        std::vector<double> actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip<double>(file, expect);
+        CHECK(actual == expect);
+    }
+
+    SECTION("string")
+    {
+        std::vector<char const*> const expect = {
+            "The quick brown fox", "jumps over", "the lazy dog", "."
+        };
+        std::vector<char const*> actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip<char*>(file, expect);
+        CHECK(actual == expect);
+    }
 }

@@ -163,6 +163,29 @@ namespace h5
     using i64 = std::int64_t;
     using u64 = std::uint64_t;
 
+    namespace detail
+    {
+        // Returns variable-length UTF-8 string datatype.
+        inline hid_t string_datatype()
+        {
+            static h5::unique_hid<H5Tclose> const string_type = [] {
+                h5::unique_hid<H5Tclose> type = H5Tcopy(H5T_C_S1);
+                if (type < 0) {
+                    throw h5::exception("failed to copy H5T_C_S1");
+                }
+                if (H5Tset_cset(type, H5T_CSET_UTF8) < 0) {
+                    throw h5::exception("failed to set UTF-8 charset");
+                }
+                if (H5Tset_size(type, H5T_VARIABLE) < 0) {
+                    throw h5::exception("failed to set variable length");
+                }
+                return type;
+            }();
+            return string_type;
+        }
+    }
+
+
     // We want to map C++ scalar type to the corresponding HDF5 datatype. We
     // use function templates because datatype values are determined at run
     // time. (H5T_* macros are not constants!)
@@ -174,8 +197,9 @@ namespace h5
     template<> inline hid_t storage_type<h5::i64>() { return H5T_STD_I64LE; }
     template<> inline hid_t storage_type<h5::u32>() { return H5T_STD_U32LE; }
     template<> inline hid_t storage_type<h5::u64>() { return H5T_STD_U64LE; }
-    template<> inline hid_t storage_type<float  >() { return H5T_IEEE_F32LE; }
-    template<> inline hid_t storage_type<double >() { return H5T_IEEE_F64LE; }
+    template<> inline hid_t storage_type<float>() { return H5T_IEEE_F32LE; }
+    template<> inline hid_t storage_type<double>() { return H5T_IEEE_F64LE; }
+    template<> inline hid_t storage_type<char*>() { return detail::string_datatype(); }
 
     template<typename T>
     hid_t memory_type() = delete;
@@ -184,8 +208,10 @@ namespace h5
     template<> inline hid_t memory_type<h5::i64>() { return H5T_NATIVE_INT64; }
     template<> inline hid_t memory_type<h5::u32>() { return H5T_NATIVE_UINT32; }
     template<> inline hid_t memory_type<h5::u64>() { return H5T_NATIVE_UINT64; }
-    template<> inline hid_t memory_type<float  >() { return H5T_NATIVE_FLOAT; }
-    template<> inline hid_t memory_type<double >() { return H5T_NATIVE_DOUBLE; }
+    template<> inline hid_t memory_type<float>() { return H5T_NATIVE_FLOAT; }
+    template<> inline hid_t memory_type<double>() { return H5T_NATIVE_DOUBLE; }
+    template<> inline hid_t memory_type<char*>() { return detail::string_datatype(); }
+    template<> inline hid_t memory_type<char const*>() { return detail::string_datatype(); }
 
 
     // SHAPE -----------------------------------------------------------------
