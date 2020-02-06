@@ -24,6 +24,18 @@ namespace
 
         return buf;
     }
+
+    template<typename D, typename T>
+    T roundtrip_scalar(h5::file& file, T const& data)
+    {
+        auto dataset = file.dataset<D>("data");
+        dataset.write(data);
+
+        T buf;
+        dataset.read(buf);
+
+        return buf;
+    }
 }
 
 
@@ -34,6 +46,8 @@ TEST_CASE("dataset - opens existing dataset")
 
     h5::file file(tmp.filename, "r");
 
+    CHECK(file.dataset<int>("scalar/int"));
+    CHECK(file.dataset<float>("scalar/float"));
     CHECK(file.dataset<int, 1>("simple/int_1"));
     CHECK(file.dataset<int, 2>("simple/int_2"));
     CHECK(file.dataset<float, 1>("simple/float_1"));
@@ -46,6 +60,17 @@ TEST_CASE("dataset::read - reads existing dataset")
     copy("data/sample.h5", tmp.filename);
 
     h5::file file(tmp.filename, "r");
+
+    SECTION("int scalar")
+    {
+        int const expect = 1234;
+        h5::dataset<int, 0> dataset = file.dataset<int>("scalar/int");
+        REQUIRE(dataset);
+
+        int actual;
+        dataset.read(actual);
+        CHECK(actual == expect);
+    }
 
     SECTION("int vector")
     {
@@ -251,6 +276,53 @@ TEST_CASE("dataset::write - applies compression")
         REQUIRE(H5Fget_filesize(file_raw.handle(), &raw_size) >= 0);
         REQUIRE(H5Fget_filesize(file_com.handle(), &com_size) >= 0);
         CHECK(raw_size > com_size);
+    }
+}
+
+TEST_CASE("dataset - can read and write numeric and string scalar")
+{
+    SECTION("i32")
+    {
+        h5::i32 const expect = 12345678;
+        h5::i32 actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip_scalar<h5::i32>(file, expect);
+        CHECK(actual == expect);
+    }
+
+    SECTION("u32")
+    {
+        h5::u32 const expect = 0x12345678;
+        h5::u32 actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip_scalar<h5::u32>(file, expect);
+        CHECK(actual == expect);
+    }
+
+    SECTION("f32")
+    {
+        float const expect = 1.23456F;
+        float actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip_scalar<float>(file, expect);
+        CHECK(actual == expect);
+    }
+
+    SECTION("f64")
+    {
+        double const expect = 1.23456789012345;
+        double actual;
+
+        temporary tmp;
+        h5::file file(tmp.filename, "w");
+        actual = roundtrip_scalar<double>(file, expect);
+        CHECK(actual == expect);
     }
 }
 

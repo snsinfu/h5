@@ -217,8 +217,7 @@ namespace h5
 
     // SHAPE -----------------------------------------------------------------
 
-    // Shape of a simple dataset (multi-dimensional array). The `rank` must be
-    // positive (i.e., cannot be zero).
+    // Shape of a simple dataset (multi-dimensional array).
     template<int rank>
     struct shape
     {
@@ -236,6 +235,11 @@ namespace h5
         }
     };
 
+    template<>
+    struct shape<0>
+    {
+    };
+
     template<int rank>
     bool operator==(h5::shape<rank> const& s1, h5::shape<rank> const& s2)
     {
@@ -244,6 +248,12 @@ namespace h5
                 return false;
             }
         }
+        return true;
+    }
+
+    template<>
+    inline bool operator==<0>(h5::shape<0> const&, h5::shape<0> const&)
+    {
         return true;
     }
 
@@ -382,6 +392,22 @@ namespace h5
             return shape;
         }
 
+        template<>
+        inline h5::shape<0> check_dataset_rank<0>(hid_t dataset)
+        {
+            h5::unique_hid<H5Sclose> dataspace = H5Dget_space(dataset);
+            if (dataspace < 0) {
+                throw h5::exception("failed to determine dataspace");
+            }
+
+            auto const dataset_rank = H5Sget_simple_extent_ndims(dataspace);
+            if (dataset_rank != 0) {
+                throw h5::exception("unexpected dataset rank");
+            }
+
+            return {};
+        }
+
 
         // Checks if the datatype of `dataset` is compatible with `D`. Throws
         // an exception if the types are incompatible. Returns a datatype hid
@@ -489,6 +515,43 @@ namespace h5
                 dataspace,
                 link_props,
                 dataset_props,
+                H5P_DEFAULT
+            );
+            if (dataset < 0) {
+                throw h5::exception("failed to create dataset");
+            }
+
+            return dataset;
+        }
+
+
+        // Creates a new scalar dataset.
+        template<typename D>
+        h5::unique_hid<H5Dclose> create_scalar_dataset(
+            hid_t file, std::string const& path
+        )
+        {
+            h5::unique_hid<H5Sclose> dataspace = H5Screate(H5S_SCALAR);
+            if (dataspace < 0) {
+                throw h5::exception("failed to create dataspace");
+            }
+
+            // Allow intermediate groups to be automatically created.
+            h5::unique_hid<H5Pclose> link_props = H5Pcreate(H5P_LINK_CREATE);
+            if (link_props < 0) {
+                throw h5::exception("failed to create link props");
+            }
+            if (H5Pset_create_intermediate_group(link_props, 1) < 0) {
+                throw h5::exception("failed to configure link props");
+            }
+
+            h5::unique_hid<H5Dclose> dataset = H5Dcreate2(
+                file,
+                path.c_str(),
+                h5::storage_type<D>(),
+                dataspace,
+                link_props,
+                H5P_DEFAULT,
                 H5P_DEFAULT
             );
             if (dataset < 0) {
@@ -659,6 +722,124 @@ namespace h5
     };
 
 
+    template<typename D>
+    class dataset<D, 0>
+    {
+    public:
+        // Tries to open a scalar dataset on the `path` in `file`.
+        //
+        // If the path does not exist, the constructor just initializes the
+        // object in the empty state. The object can be used to create a new
+        // dataset on the path by calling `write`.
+        //
+        // If the path is not a scalar dataset, or if the type assertion fails,
+        // the constructor throws an `h5::exception`.
+        //
+        // The behavior is undefined if a `dataset` object outlives `file`.
+        // Make sure `dataset` is destroyed before the file it originates.
+        //
+        dataset(hid_t file, std::string const& path)
+            : _file{file}, _path{path}
+        {
+            if (detail::check_path_exists(file, path)) {
+                _dataset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
+                if (_dataset < 0) {
+                    throw h5::exception("failed to open dataset");
+                }
+
+                detail::check_dataset_rank<0>(_dataset);
+                detail::check_dataset_type<D>(_dataset);
+            }
+        }
+
+
+        // Returns `true` if the object holds a dataset.
+        explicit operator bool() const noexcept
+        {
+            return _dataset >= 0;
+        }
+
+
+        // Returns the underlying dataset HID. Returns -1 if the object does
+        // not hold a dataset.
+        hid_t handle() const noexcept
+        {
+            return _dataset;
+        }
+
+
+        // Reads value from the dataset.
+        //
+        // The function throws an `h5::exception` if dataset is not open.
+        //
+        // Parameters:
+        //   T     = Type of the receiver variable. This must be compatible
+        //           with the dataset type `D`.
+        //   value = Reference to a variable.
+        //
+        template<typename T>
+        void read(T& value)
+        {
+            detail::check_dataset_rank<0>(_dataset);
+
+            auto const status = H5Dread(
+                _dataset, h5::memory_type<T>(), H5S_ALL, H5S_ALL, H5P_DEFAULT, &value
+            );
+            if (status < 0) {
+                throw h5::exception("failed to read from dataset");
+            }
+        }
+
+
+        // Writes a new scalar dataset.
+        //
+        // The function always creates a new dataset, clobbering existing one
+        // if any. Ancestor groups are created if not exist.
+        //
+        // XXX: Current implementation is not exception safe. Old dataset will
+        // be lost if writing a new dataset fails.
+        //
+        // Parameters:
+        //   T     = Type of the scalar value. This must be compatible with the
+        //           dataset type `D`.
+        //   value = The value to write.
+        //
+        template<typename T>
+        void write(T const& value)
+        {
+            if (detail::check_path_exists(_file, _path)) {
+                if (H5Ldelete(_file, _path.c_str(), H5P_DEFAULT) < 0) {
+                    throw h5::exception("failed to delete a path");
+                }
+            }
+            _dataset = -1;
+            _dataset = detail::create_scalar_dataset<D>(_file, _path);
+
+            auto const status = H5Dwrite(
+                _dataset,
+                h5::memory_type<T>(),
+                H5S_ALL,
+                H5S_ALL,
+                H5P_DEFAULT,
+                &value
+            );
+            if (status < 0) {
+                throw h5::exception("failed to write to dataset");
+            }
+
+            if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
+                throw h5::exception("failed to flush changes to disk");
+            }
+        }
+
+
+    private:
+        hid_t _file;
+        std::string _path;
+        h5::unique_hid<H5Dclose> _dataset;
+    };
+
+
     // FILE HANDLING ---------------------------------------------------------
 
     namespace detail
@@ -718,7 +899,6 @@ namespace h5
             throw h5::exception("unrecognized file mode");
         }
     }
-
 
     // A `file` object provides read/write access to datasets in an HDF5 file.
     class file
