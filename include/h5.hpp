@@ -795,6 +795,7 @@ namespace h5
         }
 
 
+        // Calls `read` with buffer's underlying pointer.
         template<
             typename Buffer,
             typename Tr = h5::buffer_traits<Buffer>,
@@ -802,7 +803,21 @@ namespace h5
         >
         void read(Buffer& buffer)
         {
-            Tr::reshape(buffer, this->shape());
+            read(Tr::data(buffer), Tr::shape(buffer));
+        }
+
+
+        // Reads all data from the dataset, resizing buffer to the shape of the
+        // dataset. See `read` for details. The buffer traits needs to support
+        // `reshape` operation.
+        template<
+            typename Buffer,
+            typename Tr = h5::buffer_traits<Buffer>,
+            typename T = typename Tr::value_type
+        >
+        void read_fit(Buffer& buffer)
+        {
+            Tr::reshape(buffer, shape());
             read(Tr::data(buffer), Tr::shape(buffer));
         }
 
@@ -857,6 +872,7 @@ namespace h5
         }
 
 
+        // Calls `write` with buffer's underlying pointer.
         template<
             typename Buffer,
             typename Tr = h5::buffer_traits<Buffer>,
@@ -868,6 +884,7 @@ namespace h5
         }
 
 
+        // Calls `write` with buffer's underlying pointer.
         template<
             typename Buffer,
             typename Tr = h5::buffer_traits<Buffer>,
