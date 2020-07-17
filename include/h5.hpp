@@ -314,6 +314,46 @@ namespace h5
     }
 
 
+    // BUFFER TRAITS ---------------------------------------------------------
+
+    // Customization point for user-defined buffers.
+    //
+    // A buffer is a flat memory containing multi-dimensional array in the C
+    // (row-major) order. h5 always accepts raw pointers as a general fallback,
+    // but for usability a trait is defined for dissecting the pointer and the
+    // shape of a buffer.
+    template<typename T>
+    struct buffer_traits;
+
+    template<typename T>
+    struct buffer_traits<std::vector<T>>
+    {
+        using buffer_type = std::vector<T>;
+        using value_type = T;
+        static constexpr int rank = 1;
+
+        static h5::shape<rank> shape(buffer_type const& buffer)
+        {
+            return {buffer.size()};
+        }
+
+        static void reshape(buffer_type& buffer, h5::shape<rank> const& s)
+        {
+            buffer.resize(s.dims[0]);
+        }
+
+        static value_type* data(buffer_type& buffer)
+        {
+            return buffer.data();
+        }
+
+        static value_type const* data(buffer_type const& buffer)
+        {
+            return buffer.data();
+        }
+    };
+
+
     // PATH ------------------------------------------------------------------
 
     namespace detail
@@ -755,6 +795,18 @@ namespace h5
         }
 
 
+        template<
+            typename Buffer,
+            typename Tr = h5::buffer_traits<Buffer>,
+            typename T = typename Tr::value_type
+        >
+        void read(Buffer& buffer)
+        {
+            Tr::reshape(buffer, this->shape());
+            read(Tr::data(buffer), Tr::shape(buffer));
+        }
+
+
         // Writes a new dataset of given shape.
         //
         // The function writes flattened data pointed-to by `buf` to the path.
@@ -802,6 +854,28 @@ namespace h5
         {
             h5::dataset_options default_options;
             return write(buf, shape, default_options);
+        }
+
+
+        template<
+            typename Buffer,
+            typename Tr = h5::buffer_traits<Buffer>,
+            typename T = typename Tr::value_type
+        >
+        void write(Buffer const& buffer, h5::dataset_options const& options)
+        {
+            write(Tr::data(buffer), Tr::shape(buffer), options);
+        }
+
+
+        template<
+            typename Buffer,
+            typename Tr = h5::buffer_traits<Buffer>,
+            typename T = typename Tr::value_type
+        >
+        void write(Buffer const& buffer)
+        {
+            write(Tr::data(buffer), Tr::shape(buffer));
         }
 
 
