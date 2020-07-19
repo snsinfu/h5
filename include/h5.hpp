@@ -1330,10 +1330,12 @@ namespace h5
         // Opens `path` on the file for reading or writing a dataset.
         //
         // Parameters:
-        //   D    = Expected type of the dataset elements.
-        //   rank = Expected rank of the dataset (0: scalar, 1: vector,
-        //          2: matrix, ...).
-        //   path = HDF5 dataset path.
+        //   D     = Expected type of the dataset elements.
+        //   rank  = Expected rank of the dataset (0: scalar, 1: vector,
+        //           2: matrix, ...).
+        //   path  = HDF5 dataset path.
+        //   enums = Assume the dataset to hold enumerated values defined in
+        //           this list.
         //
         // Returns:
         //   `h5::dataset` object.
