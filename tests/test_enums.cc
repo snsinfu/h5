@@ -55,6 +55,10 @@ TEST_CASE("dataset - validates enum datatype")
         {"A", 1}, {"C", 3}
     };
 
+    h5::enums<signed char> const enums_wrong_type = {
+        {"A", 1}, {"B", 2}, {"C", 3}
+    };
+
     // Enum datatype is validated against expected members. Note: The negative
     // tests would produce HDF5 diagnosis messages to stderr.
     std::string const path = "simple/enum";
@@ -63,6 +67,7 @@ TEST_CASE("dataset - validates enum datatype")
     CHECK_THROWS(file.dataset<int, 1>(path, enums_wrong_key));
     CHECK_THROWS(file.dataset<int, 1>(path, enums_wrong_value));
     CHECK_THROWS(file.dataset<int, 1>(path, enums_missing_member));
+    CHECK_THROWS(file.dataset<signed char, 1>(path, enums_wrong_type));
 
     h5::dataset<int, 1> dataset = file.dataset<int, 1>(path, enums_truth);
     h5::shape<1> const shape = dataset.shape();
@@ -96,5 +101,22 @@ TEST_CASE("dataset - creates enum dataset")
     file.dataset<int, 1>("data", enums).write(expect);
     file.dataset<int, 1>("data", enums).read(actual);
 
+    CHECK(actual == expect);
+}
+
+TEST_CASE("dataset::read - can convert enum value type")
+{
+    h5::file file("data/sample.h5", "r");
+
+    // The sample enum dataset is based on i32. We load the dataset as an
+    // array of i16 values. libhdf5 should handle conversion.
+    h5::enums<h5::i32> const enums = {
+        {"A", 1}, {"B", 2}, {"C", 3}
+    };
+
+    std::vector<h5::i16> const expect = { 1, 2, 3, 2, 1 };
+    std::vector<h5::i16> actual;
+
+    file.dataset<h5::i32, 1>("simple/enum", enums).read_fit(actual);
     CHECK(actual == expect);
 }

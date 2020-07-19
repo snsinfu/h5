@@ -360,6 +360,12 @@ namespace h5
                 throw h5::exception("datatype is not an enum");
             }
 
+            if (H5Tget_size(datatype) != sizeof(D)) {
+                // libhdf5 does not support integral type conversion for enum
+                // values. It silently corrupts memory if the sizes mismatch.
+                throw h5::exception("unexpected enum datatype size");
+            }
+
             int const member_count = H5Tget_nmembers(datatype);
             if (member_count < 0) {
                 throw h5::exception("failed to get enum member count");
