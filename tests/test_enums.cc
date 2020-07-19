@@ -99,16 +99,12 @@ TEST_CASE("dataset - validates enum datatype")
     CHECK(actual == expect);
 }
 
-TEST_CASE("dataset - creates enum dataset")
+TEST_CASE("dataset::write - creates enum dataset")
 {
     temporary tmp;
     h5::file file(tmp.filename, "w");
 
-    h5::enums<h5::i32> const enums = {
-        {"A", 1}, {"B", 2}, {"C", 3}
-    };
-    std::string const path = "data";
-
+    h5::enums<h5::i32> const enums = {{"A", 1}, {"B", 2}, {"C", 3}};
     std::vector<h5::i32> const expect = { 1, 2, 3, 2, 1 };
     std::vector<h5::i32> actual(expect.size());
 
@@ -133,4 +129,30 @@ TEST_CASE("dataset::read - can convert enum value type")
 
     file.dataset<h5::i32, 1>("simple/enum", enums).read_fit(actual);
     CHECK(actual == expect);
+}
+
+TEST_CASE("dataset::write - writes scalar enum value")
+{
+    temporary tmp;
+    h5::file file(tmp.filename, "w");
+
+    h5::enums<h5::i32> const enums = {{"A", 1}, {"B", 2}, {"C", 3}};
+    h5::i32 const expect = 2;
+    h5::i32 actual;
+
+    file.dataset<h5::i32>("data", enums).write(expect);
+    file.dataset<h5::i32>("data", enums).read(actual);
+
+    CHECK(actual == expect);
+}
+
+TEST_CASE("dataset::read - reads scalar enum value")
+{
+    h5::file file("data/sample.h5", "r");
+
+    h5::enums<h5::i32> const enums = {{"A", 1}, {"B", 2}, {"C", 3}};
+    h5::i32 value;
+    file.dataset<h5::i32>("scalar/enum", enums).read(value);
+
+    CHECK(value == *enums.value("A"));
 }

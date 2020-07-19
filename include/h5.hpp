@@ -1044,8 +1044,10 @@ namespace h5
                 }
             }
 
-            auto const datatype =
-                _given_datatype >= 0 ? hid_t{_given_datatype} : h5::storage_type<D>();
+            hid_t datatype = h5::storage_type<D>();
+            if (_given_datatype >= 0) {
+                datatype = _given_datatype;
+            }
 
             _dataset = -1;
             _dataset = detail::create_simple_dataset<D, rank>(
@@ -1136,6 +1138,22 @@ namespace h5
         }
 
 
+        // Tries to open a scalar enum dataset on the `path` in `file`.
+        //
+        // This constructor works just like `dataset(file, path)`, but does
+        // additional type check of enum members against dataset if exists.
+        //
+        dataset(hid_t file, std::string const& path, h5::enums<D> const& enums)
+            : dataset{file, path}
+        {
+            _given_datatype = detail::make_enum_type(enums);
+
+            if (_dataset >= 0) {
+                detail::check_dataset_enums(_dataset, enums);
+            }
+        }
+
+
         // Returns `true` if the object holds a dataset.
         explicit operator bool() const noexcept
         {
@@ -1190,12 +1208,20 @@ namespace h5
                     throw h5::exception("failed to delete a path");
                 }
             }
-            _dataset = -1;
-            _dataset = detail::create_scalar_dataset<D>(
-                _file, _path, h5::storage_type<D>()
-            );
 
-            detail::write_dataset(_dataset, &value, 1);
+            hid_t datatype = h5::storage_type<D>();
+            if (_given_datatype >= 0) {
+                datatype = _given_datatype;
+            }
+
+            _dataset = -1;
+            _dataset = detail::create_scalar_dataset<D>(_file, _path, datatype);
+
+            if (detail::is_enum_datatype(datatype)) {
+                detail::write_enum_dataset(_dataset, &value, 1, datatype);
+            } else {
+                detail::write_dataset(_dataset, &value, 1);
+            }
 
             if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
                 throw h5::exception("failed to flush changes to disk");
@@ -1207,6 +1233,7 @@ namespace h5
         hid_t _file;
         std::string _path;
         h5::unique_hid<H5Dclose> _dataset;
+        h5::unique_hid<H5Tclose> _given_datatype;
     };
 
 
