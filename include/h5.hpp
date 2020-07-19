@@ -344,10 +344,22 @@ namespace h5
 
     namespace detail
     {
+        // Returns true if `datatype` is valid and an enum.
+        inline
+        bool is_enum_datatype(hid_t datatype)
+        {
+            return H5Tget_class(datatype) == H5T_ENUM;
+        }
+
+
         // Checks an enum datatype against enumerated list.
         template<typename D>
         void check_enum_type(hid_t datatype, h5::enums<D> const& enums)
         {
+            if (!is_enum_datatype(datatype)) {
+                throw h5::exception("datatype is not an enum");
+            }
+
             int const member_count = H5Tget_nmembers(datatype);
             if (member_count < 0) {
                 throw h5::exception("failed to get enum member count");
@@ -847,6 +859,23 @@ namespace h5
 
             write_dataset(dataset, tmpbuf.data(), size);
         }
+
+
+        // Writes given buffer into dataset as an enum array.
+        template<typename T>
+        void write_enum_dataset(hid_t dataset, T const* buf, std::size_t, hid_t datatype)
+        {
+            if (sizeof(T) != H5Tget_size(datatype)) {
+                throw h5::exception("buffer is incompatible with enum datatype");
+            }
+
+            auto const status = H5Dwrite(
+                dataset, datatype, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf
+            );
+            if (status < 0) {
+                throw h5::exception("failed to write to enum dataset");
+            }
+        }
     }
 
 
@@ -1017,7 +1046,11 @@ namespace h5
                 _file, _path, datatype, shape, options
             );
 
-            detail::write_dataset(_dataset, buf, shape.size());
+            if (detail::is_enum_datatype(datatype)) {
+                detail::write_enum_dataset(_dataset, buf, shape.size(), datatype);
+            } else {
+                detail::write_dataset(_dataset, buf, shape.size());
+            }
 
             if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
                 throw h5::exception("failed to flush changes to disk");

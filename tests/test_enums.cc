@@ -93,7 +93,6 @@ TEST_CASE("dataset - creates enum dataset")
     std::vector<int> const expect = { 1, 2, 3, 2, 1 };
     std::vector<int> actual(expect.size());
 
-    // FIXME: Here, write() fails because libhdf5 does not convert int to enum.
     file.dataset<int, 1>("data", enums).write(expect);
     file.dataset<int, 1>("data", enums).read(actual);
 
