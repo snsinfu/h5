@@ -53,23 +53,23 @@ TEST_CASE("dataset - validates enum datatype")
     h5::file file("data/sample.h5", "r");
 
     // Correct enum
-    h5::enums<int> const enums_truth = {
+    h5::enums<h5::i32> const enums_truth = {
         {"A", 1}, {"B", 2}, {"C", 3}
     };
 
-    h5::enums<int> const enums_wrong_key = {
+    h5::enums<h5::i32> const enums_wrong_key = {
         {"X", 1}, {"Y", 2}, {"Z", 3}
     };
 
-    h5::enums<int> const enums_wrong_value = {
+    h5::enums<h5::i32> const enums_wrong_value = {
         {"A", 0}, {"B", 1}, {"C", 2}
     };
 
-    h5::enums<int> const enums_missing_member = {
+    h5::enums<h5::i32> const enums_missing_member = {
         {"A", 1}, {"C", 3}
     };
 
-    h5::enums<signed char> const enums_wrong_type = {
+    h5::enums<h5::i8> const enums_wrong_type = {
         {"A", 1}, {"B", 2}, {"C", 3}
     };
 
@@ -77,23 +77,23 @@ TEST_CASE("dataset - validates enum datatype")
     // tests would produce HDF5 diagnosis messages to stderr.
     std::string const path = "simple/enum";
 
-    CHECK_NOTHROW(file.dataset<int, 1>(path, enums_truth));
-    CHECK_THROWS(file.dataset<int, 1>(path, enums_wrong_key));
-    CHECK_THROWS(file.dataset<int, 1>(path, enums_wrong_value));
-    CHECK_THROWS(file.dataset<int, 1>(path, enums_missing_member));
-    CHECK_THROWS(file.dataset<signed char, 1>(path, enums_wrong_type));
+    CHECK_NOTHROW(file.dataset<h5::i32, 1>(path, enums_truth));
+    CHECK_THROWS(file.dataset<h5::i32, 1>(path, enums_wrong_key));
+    CHECK_THROWS(file.dataset<h5::i32, 1>(path, enums_wrong_value));
+    CHECK_THROWS(file.dataset<h5::i32, 1>(path, enums_missing_member));
+    CHECK_THROWS(file.dataset<h5::i8, 1>(path, enums_wrong_type));
 
-    h5::dataset<int, 1> dataset = file.dataset<int, 1>(path, enums_truth);
+    h5::dataset<h5::i32, 1> dataset = file.dataset<h5::i32, 1>(path, enums_truth);
     h5::shape<1> const shape = dataset.shape();
 
-    std::vector<int> const expect = {
+    std::vector<h5::i32> const expect = {
         1, 2, 3, 2, 1
     };
 
     REQUIRE(shape.dims[0] == expect.size());
 
     // Can read enum data as int array.
-    std::vector<int> actual(shape.dims[0]);
+    std::vector<h5::i32> actual(shape.dims[0]);
     dataset.read(actual);
 
     CHECK(actual == expect);
@@ -104,16 +104,16 @@ TEST_CASE("dataset - creates enum dataset")
     temporary tmp;
     h5::file file(tmp.filename, "w");
 
-    h5::enums<int> const enums = {
+    h5::enums<h5::i32> const enums = {
         {"A", 1}, {"B", 2}, {"C", 3}
     };
     std::string const path = "data";
 
-    std::vector<int> const expect = { 1, 2, 3, 2, 1 };
-    std::vector<int> actual(expect.size());
+    std::vector<h5::i32> const expect = { 1, 2, 3, 2, 1 };
+    std::vector<h5::i32> actual(expect.size());
 
-    file.dataset<int, 1>("data", enums).write(expect);
-    file.dataset<int, 1>("data", enums).read(actual);
+    file.dataset<h5::i32, 1>("data", enums).write(expect);
+    file.dataset<h5::i32, 1>("data", enums).read(actual);
 
     CHECK(actual == expect);
 }
