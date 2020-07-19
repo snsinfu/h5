@@ -34,6 +34,20 @@ TEST_CASE("enums - accepts initializer list")
     CHECK(*enums.name(4) == "D");
 }
 
+TEST_CASE("enums::insert - inserts a member")
+{
+    h5::enums<int> enums;
+
+    enums.insert("A", 1);
+    enums.insert("C", 3);
+    enums.insert("B", 2);
+
+    CHECK(enums.size() == 3);
+    CHECK(*enums.value("A") == 1);
+    CHECK(*enums.value("B") == 2);
+    CHECK(*enums.value("C") == 3);
+}
+
 TEST_CASE("dataset - validates enum datatype")
 {
     h5::file file("data/sample.h5", "r");
