@@ -31,6 +31,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -263,6 +264,150 @@ namespace h5
     template<> inline hid_t memory_type<double>() { return H5T_NATIVE_DOUBLE; }
     template<> inline hid_t memory_type<char*>() { return detail::string_datatype(); }
     template<> inline hid_t memory_type<char const*>() { return detail::string_datatype(); }
+
+
+    // ENUM DEFINITION -------------------------------------------------------
+
+    // Holds a list of enum members.
+    template<typename T>
+    class enums
+    {
+    public:
+        // Type of enumerated value.
+        using value_type = T;
+
+        struct member
+        {
+            std::string name;
+            value_type value;
+        };
+
+        using iterator = typename std::vector<member>::const_iterator;
+
+        // Creates an empty enumeration list.
+        enums() = default;
+
+        // Creates an enumeration list containing given members.
+        enums(std::initializer_list<member> const& members)
+            : _members(members)
+        {
+        }
+
+        // Returns the number of members in the enumeration list.
+        std::size_t size() const
+        {
+            return _members.size();
+        }
+
+        iterator begin() const
+        {
+            return _members.begin();
+        }
+
+        iterator end() const
+        {
+            return _members.end();
+        }
+
+        // Returns a pointer to the name of given value in the enumeration list.
+        std::string const* name(value_type value) const
+        {
+            for (auto const& member : _members) {
+                if (member.value == value) {
+                    return &member.name;
+                }
+            }
+            return nullptr;
+        }
+
+        // Returns a pointer to the value of given name in the enumeration list.
+        value_type const* value(std::string const& name) const
+        {
+            for (auto const& member : _members) {
+                if (member.name == name) {
+                    return &member.value;
+                }
+            }
+            return nullptr;
+        }
+
+        // Inserts a new member to the enumeration list.
+        void insert(std::string const& name, value_type value)
+        {
+            _members.push_back({name, value});
+        }
+
+    private:
+        std::vector<member> _members;
+    };
+
+
+    namespace detail
+    {
+        // Returns true if `datatype` is valid and an enum.
+        inline
+        bool is_enum_datatype(hid_t datatype)
+        {
+            return H5Tget_class(datatype) == H5T_ENUM;
+        }
+
+
+        // Checks an enum datatype against enumerated list.
+        template<typename D>
+        void check_enum_type(hid_t datatype, h5::enums<D> const& enums)
+        {
+            if (!is_enum_datatype(datatype)) {
+                throw h5::exception("datatype is not an enum");
+            }
+
+            if (H5Tget_size(datatype) != sizeof(D)) {
+                // libhdf5 does not support integral type conversion for enum
+                // values. It silently corrupts memory if the sizes mismatch.
+                throw h5::exception("unexpected enum datatype size");
+            }
+
+            int const member_count = H5Tget_nmembers(datatype);
+            if (member_count < 0) {
+                throw h5::exception("failed to get enum member count");
+            }
+
+            if (enums.size() != static_cast<std::size_t>(member_count)) {
+                throw h5::exception("enum member count mismatch");
+            }
+
+            for (auto const& member : enums) {
+                D actual_value;
+                if (H5Tenum_valueof(datatype, member.name.c_str(), &actual_value) < 0) {
+                    throw h5::exception("failed to get enum member value");
+                }
+
+                if (actual_value != member.value) {
+                    throw h5::exception("enum member value mismatch");
+                }
+            }
+        }
+
+
+        // Creates HDF5 enum type from an enum member list.
+        template<typename D>
+        h5::unique_hid<H5Tclose> make_enum_type(h5::enums<D> const& enums)
+        {
+            // The base type of enum must be a native integer. So use memory_type
+            // instead of storage_type here.
+            h5::unique_hid<H5Tclose> type = H5Tenum_create(h5::memory_type<D>());
+            if (type < 0) {
+                throw h5::exception("failed to create enum type");
+            }
+
+            for (auto const& member : enums) {
+                if (H5Tenum_insert(type, member.name.c_str(), &member.value) < 0) {
+                    throw h5::exception("failed to insert enum memher");
+                }
+            }
+
+            return type;
+        }
+    }
 
 
     // SHAPE -----------------------------------------------------------------
@@ -519,6 +664,20 @@ namespace h5
         }
 
 
+        // Checks if the datatype of `dataset` is an enum that matches given
+        // definition. Throws an `h5::exception` if not.
+        template<typename D>
+        void check_dataset_enums(hid_t dataset, h5::enums<D> const& enums)
+        {
+            h5::unique_hid<H5Tclose> datatype = H5Dget_type(dataset);
+            if (datatype < 0) {
+                throw h5::exception("failed to determine enum datatype");
+            }
+
+            detail::check_enum_type(datatype, enums);
+        }
+
+
         template<typename D>
         H5Z_SO_scale_type_t determine_scaleoffset_type()
         {
@@ -537,6 +696,7 @@ namespace h5
         h5::unique_hid<H5Dclose> create_simple_dataset(
             hid_t file,
             std::string const& path,
+            hid_t datatype,
             h5::shape<rank> const& shape,
             h5::dataset_options const& options
         )
@@ -601,7 +761,7 @@ namespace h5
             h5::unique_hid<H5Dclose> dataset = H5Dcreate2(
                 file,
                 path.c_str(),
-                h5::storage_type<D>(),
+                datatype,
                 dataspace,
                 link_props,
                 dataset_props,
@@ -618,7 +778,7 @@ namespace h5
         // Creates a new scalar dataset.
         template<typename D>
         h5::unique_hid<H5Dclose> create_scalar_dataset(
-            hid_t file, std::string const& path
+            hid_t file, std::string const& path, hid_t datatype
         )
         {
             h5::unique_hid<H5Sclose> dataspace = H5Screate(H5S_SCALAR);
@@ -638,7 +798,7 @@ namespace h5
             h5::unique_hid<H5Dclose> dataset = H5Dcreate2(
                 file,
                 path.c_str(),
-                h5::storage_type<D>(),
+                datatype,
                 dataspace,
                 link_props,
                 H5P_DEFAULT,
@@ -705,6 +865,23 @@ namespace h5
 
             write_dataset(dataset, tmpbuf.data(), size);
         }
+
+
+        // Writes given buffer into dataset as an enum array.
+        template<typename T>
+        void write_enum_dataset(hid_t dataset, T const* buf, std::size_t, hid_t datatype)
+        {
+            if (sizeof(T) != H5Tget_size(datatype)) {
+                throw h5::exception("buffer is incompatible with enum datatype");
+            }
+
+            auto const status = H5Dwrite(
+                dataset, datatype, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf
+            );
+            if (status < 0) {
+                throw h5::exception("failed to write to enum dataset");
+            }
+        }
     }
 
 
@@ -743,6 +920,22 @@ namespace h5
 
                 detail::check_dataset_rank<rank>(_dataset);
                 detail::check_dataset_type<D>(_dataset);
+            }
+        }
+
+
+        // Tries to open a simple enum dataset on the `path` in `file`.
+        //
+        // This constructor works just like `dataset(file, path)`, but does
+        // additional type check of enum members against dataset if exists.
+        //
+        dataset(hid_t file, std::string const& path, h5::enums<D> const& enums)
+            : dataset{file, path}
+        {
+            _given_datatype = detail::make_enum_type(enums);
+
+            if (_dataset >= 0) {
+                detail::check_dataset_enums(_dataset, enums);
             }
         }
 
@@ -850,12 +1043,22 @@ namespace h5
                     throw h5::exception("failed to delete a path");
                 }
             }
+
+            hid_t datatype = h5::storage_type<D>();
+            if (_given_datatype >= 0) {
+                datatype = _given_datatype;
+            }
+
             _dataset = -1;
             _dataset = detail::create_simple_dataset<D, rank>(
-                _file, _path, shape, options
+                _file, _path, datatype, shape, options
             );
 
-            detail::write_dataset(_dataset, buf, shape.size());
+            if (detail::is_enum_datatype(datatype)) {
+                detail::write_enum_dataset(_dataset, buf, shape.size(), datatype);
+            } else {
+                detail::write_dataset(_dataset, buf, shape.size());
+            }
 
             if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
                 throw h5::exception("failed to flush changes to disk");
@@ -900,6 +1103,7 @@ namespace h5
         hid_t _file;
         std::string _path;
         h5::unique_hid<H5Dclose> _dataset;
+        h5::unique_hid<H5Tclose> _given_datatype;
     };
 
 
@@ -930,6 +1134,22 @@ namespace h5
 
                 detail::check_dataset_rank<0>(_dataset);
                 detail::check_dataset_type<D>(_dataset);
+            }
+        }
+
+
+        // Tries to open a scalar enum dataset on the `path` in `file`.
+        //
+        // This constructor works just like `dataset(file, path)`, but does
+        // additional type check of enum members against dataset if exists.
+        //
+        dataset(hid_t file, std::string const& path, h5::enums<D> const& enums)
+            : dataset{file, path}
+        {
+            _given_datatype = detail::make_enum_type(enums);
+
+            if (_dataset >= 0) {
+                detail::check_dataset_enums(_dataset, enums);
             }
         }
 
@@ -988,10 +1208,20 @@ namespace h5
                     throw h5::exception("failed to delete a path");
                 }
             }
-            _dataset = -1;
-            _dataset = detail::create_scalar_dataset<D>(_file, _path);
 
-            detail::write_dataset(_dataset, &value, 1);
+            hid_t datatype = h5::storage_type<D>();
+            if (_given_datatype >= 0) {
+                datatype = _given_datatype;
+            }
+
+            _dataset = -1;
+            _dataset = detail::create_scalar_dataset<D>(_file, _path, datatype);
+
+            if (detail::is_enum_datatype(datatype)) {
+                detail::write_enum_dataset(_dataset, &value, 1, datatype);
+            } else {
+                detail::write_dataset(_dataset, &value, 1);
+            }
 
             if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
                 throw h5::exception("failed to flush changes to disk");
@@ -1003,6 +1233,7 @@ namespace h5
         hid_t _file;
         std::string _path;
         h5::unique_hid<H5Dclose> _dataset;
+        h5::unique_hid<H5Tclose> _given_datatype;
     };
 
 
@@ -1099,10 +1330,12 @@ namespace h5
         // Opens `path` on the file for reading or writing a dataset.
         //
         // Parameters:
-        //   D    = Expected type of the dataset elements.
-        //   rank = Expected rank of the dataset (0: scalar, 1: vector,
-        //          2: matrix, ...).
-        //   path = HDF5 dataset path.
+        //   D     = Expected type of the dataset elements.
+        //   rank  = Expected rank of the dataset (0: scalar, 1: vector,
+        //           2: matrix, ...).
+        //   path  = HDF5 dataset path.
+        //   enums = Assume the dataset to hold enumerated values defined in
+        //           this list.
         //
         // Returns:
         //   `h5::dataset` object.
@@ -1111,6 +1344,12 @@ namespace h5
         h5::dataset<D, rank> dataset(std::string const& path)
         {
             return h5::dataset<D, rank>{_file, path};
+        }
+
+        template<typename D, int rank = 0>
+        h5::dataset<D, rank> dataset(std::string const& path, h5::enums<D> const& enums)
+        {
+            return h5::dataset<D, rank>{_file, path, enums};
         }
 
     private:
