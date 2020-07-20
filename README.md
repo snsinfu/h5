@@ -243,12 +243,12 @@ class h5::enums<D> {
     };
 
     enums(
-      std::initializer_list<member> members  // optional
+        std::initializer_list<member> members  // optional
     );
 
     void insert(
-      std::string const& name,
-      D                  value
+        std::string const& name,
+        D                  value
     );
 };
 ```
@@ -270,27 +270,27 @@ default one-dimensional buffer based on `std::vector` is defined.
 
 ```c++
 struct h5::buffer_traits<B> {
-  static constexpr int rank;
+    static constexpr int rank;
 
-  using value_type = ...;
+    using value_type = ...;
 
-  static h5::shape<rank> shape(
-    B const& buffer
-  );
+    static h5::shape<rank> shape(
+        B const& buffer
+    );
 
-  static value_type const* data(
-    B const& buffer
-  );
+    static value_type const* data(
+        B const& buffer
+    );
 
-  static value_type* data(
-    B& buffer
-  );
+    static value_type* data(
+        B& buffer
+    );
 
-  // Optional
-  static void reshape(
-    B&                     buffer,
-    h5::shape<rank> const& shape
-  );
+    // Optional
+    static void reshape(
+        B&                     buffer,
+        h5::shape<rank> const& shape
+    );
 };
 ```
 
