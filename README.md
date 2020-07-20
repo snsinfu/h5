@@ -266,7 +266,8 @@ Inserts a member to the enum list.
 ### h5::buffer_traits
 
 Customizable traits for defining buffer types used to read/write dataset. By
-default one-dimensional buffer based on `std::vector` is defined.
+default one-dimensional buffer based on `std::vector` is defined. See
+[an example code adapting Eigen::Matrix as a buffer][example-eigen-buffer]
 
 ```c++
 struct h5::buffer_traits<B> {
@@ -293,6 +294,8 @@ struct h5::buffer_traits<B> {
     );
 };
 ```
+
+[example-eigen-buffer]: examples/eigen_buffer/main.cc
 
 ## Testing
 
