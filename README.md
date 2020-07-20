@@ -145,10 +145,26 @@ class h5::dataset<D, rank> {
         h5::shape<rank> const& shape
     );
 
+    template<typename B>
+    void read(
+        B& buf
+    );
+
+    template<typename B>
+    void read_fit(
+        B& buf
+    );
+
     template<typename T>
     void write(
         T const*                   buf,
         h5::shape<rank> const&     shape,
+        h5::dataset_options const& options  // optional
+    );
+
+    template<typename B>
+    void write(
+        B const&                   buf,
         h5::dataset_options const& options  // optional
     );
 };
