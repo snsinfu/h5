@@ -61,10 +61,14 @@ API:
 - [h5::dataset](#h5dataset)
   - [dataset::shape()](#datasetshape)
   - [dataset::read(buf, shape)](#datasetreadbuf-shape)
+  - [dataset::read(buf)](#datasetreadbuf)
+  - [dataset::read_fit(buf)](#datasetread_fitbuf)
   - [dataset::write(buf, shape, options)](#datasetwritebuf-shape-options)
+  - [dataset::write(buf, options)](#datasetwritebuf-options)
 - [h5::enums](#h5enums)
   - [enums::enums(members)](#enumsenumsmembers)
   - [enums::insert(name, value)](#enumsinsertname-value)
+- [h5::buffer_traits](#h5buffer_traits)
 
 ### h5::file
 
@@ -168,6 +172,20 @@ conversion is supported by the HDF5 library.
 One exception is `T = std::string` which this library supports conversion from
 `D = h5::str` dataset (internally it is `char*`).
 
+#### dataset::read(buf)
+
+Reads dataset into a buffer. This function works the same way as
+`dataset::read(buf, shape)` but uses [buffer traits](#h5buffer_traits) to
+extract the pointer and the shape of the buffer object (a `std::vector` or a
+user-defined one).
+
+#### dataset::read_fit(buf)
+
+Reads dataset into a buffer with auto-resizing. This functionion is similar
+to `dataset::read(buf)` but this one automatically resizes `buf` so that the
+dataset fits in the buffer. The buffer must support `buffer_traits::reshape`
+trait.
+
 #### dataset::write(buf, shape, options)
 
 Writes data in a buffer to the dataset. This function always creates a new
@@ -188,6 +206,13 @@ One exception is `T = std::string` which this library supports conversion to
 |-------------|---------------------------------------|
 | compression | Deflate compression level (0-9).      |
 | scaleoffset | Scaleoffset lossy compression factor. |
+
+#### dataset::write(buf, options)
+
+Writes data in a buffer to the dataset. This function works the same way as
+`dataset::write(buf, shape, options)` but uses [buffer traits](#h5buffer_traits)
+to extract the pointer and the shape of the buffer object (a `std::vector`
+or a user-defined one).
 
 ### h5::enums
 
@@ -221,6 +246,37 @@ of a string name and an integral value of type `D`. The list is empty if
 #### enums::insert(name, value)
 
 Inserts a member to the enum list.
+
+### h5::buffer_traits
+
+Customizable traits for defining buffer types used to read/write dataset. By
+default one-dimensional buffer based on `std::vector` is defined.
+
+```c++
+struct h5::buffer_traits<B> {
+  static constexpr int rank;
+
+  using value_type = ...;
+
+  static h5::shape<rank> shape(
+    B const& buffer
+  );
+
+  static value_type const* data(
+    B const& buffer
+  );
+
+  static value_type* data(
+    B& buffer
+  );
+
+  // Optional
+  static void reshape(
+    B&                     buffer,
+    h5::shape<rank> const& shape
+  );
+};
+```
 
 ## Testing
 
