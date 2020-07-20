@@ -57,13 +57,18 @@ API:
 
 - [h5::file](#h5file)
   - [file::file(filename, mode)](#filefilefilename-mode)
-  - [file::dataset<D, rank>(path)](#filedatasetd-rankpath)
+  - [file::dataset<D, rank>(path, enums)](#filedatasetd-rankpath-enums)
 - [h5::dataset](#h5dataset)
   - [dataset::shape()](#datasetshape)
   - [dataset::read(buf, shape)](#datasetreadbuf-shape)
   - [dataset::write(buf, shape, options)](#datasetwritebuf-shape-options)
+- [h5::enums](#h5enums)
+  - [enums::enums(members)](#enumsenumsmembers)
+  - [enums::insert(name, value)](#enumsinsertname-value)
 
 ### h5::file
+
+Represents an HDF5 file.
 
 ```c++
 class h5::file {
@@ -74,7 +79,8 @@ class h5::file {
 
     template<typename D, int rank>
     h5::dataset<D, rank> dataset(
-        std::string const& path
+        std::string const&  path,
+        h5::enums<D> const& enums  // optional
     );
 };
 ```
@@ -93,13 +99,14 @@ Opens or creates an HDF5 file.
 | w    | Read-write. Truncates existing file. |
 | w-   | Read-write. Fails when file exists.  |
 
-#### file::dataset<D, rank>(path)
+#### file::dataset<D, rank>(path, enums)
 
 Opens a dataset at `path` in the file.
 
 The type `D` and integer `rank` are assertions on the accessed dataset. The
 function throws an exception if the dataset has incompatible type with `D` or
-the rank is not as specified.
+the rank is not as specified. An optional argument `enums` specifies additional
+assertion for enum-typed dataset (see [h5::enums](#h5enums)).
 
 This function does not fail if `path` does not exist. In that case the returned
 dataset object is in "empty" state, disallowing `read` and allowing `write`.
@@ -122,6 +129,8 @@ Expected dataset types:
 
 ### h5::dataset
 
+Represents an HDF5 dataset with known datatype and rank.
+
 ```c++
 class h5::dataset<D, rank> {
     h5::shape<rank> shape() const;
@@ -136,7 +145,7 @@ class h5::dataset<D, rank> {
     void write(
         T const*                   buf,
         h5::shape<rank> const&     shape,
-        h5::dataset_options const& options
+        h5::dataset_options const& options  // optional
     );
 };
 ```
@@ -179,6 +188,39 @@ One exception is `T = std::string` which this library supports conversion to
 |-------------|---------------------------------------|
 | compression | Deflate compression level (0-9).      |
 | scaleoffset | Scaleoffset lossy compression factor. |
+
+### h5::enums
+
+Holds a list of enumerated, named integers. Used to define an enum datatype
+when accessing an enum-valued dataset.
+
+```c++
+class h5::enums<D> {
+    struct member {
+        std::string name;
+        D           value;
+    };
+
+    enums(
+      std::initializer_list<member> members  // optional
+    );
+
+    void insert(
+      std::string const& name,
+      D                  value
+    );
+};
+```
+
+#### enums::enums(members)
+
+Creates a list of enumerated values having given members. A member is a pair
+of a string name and an integral value of type `D`. The list is empty if
+`members` is not given.
+
+#### enums::insert(name, value)
+
+Inserts a member to the enum list.
 
 ## Testing
 
