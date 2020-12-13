@@ -1,5 +1,7 @@
 # Cookbook
 
+- [Incrementally write cellular automaton states to disk](#incrementally-write-cellular-automaton-states-to-disk)
+
 ## Incrementally write cellular automaton states to disk
 
 ```c++
@@ -50,7 +52,8 @@ int main()
         // Save state after every update.
         state_stream.write(state);
     }
-}```
+}
+```
 
 Run the code and inspect the output file:
 
