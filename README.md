@@ -8,6 +8,7 @@
 
 - [Install](#install)
 - [Usage](#usage)
+- [API](#api)
 - [Testing](#testing)
 - [License](#license)
 
@@ -39,7 +40,7 @@ git submodule add https://github.com/snsinfu/h5 submodules/h5
 The usage is as easy as this:
 
 ```c++
-h5::file file("data.h5", "r+");
+h5::file file("data.h5", "w");
 
 // h5 operates on multi-dimensional array in C layout. Here's a buffer
 // containing a 10x10x10 tensor.
@@ -53,7 +54,9 @@ file.dataset<float, 3>("my/new/dataset").write(buf.data(), shape);
 file.dataset<float, 3>("my/new/dataset").read(buf.data(), shape);
 ```
 
-API:
+See [cookbook](./COOKBOOK.md) for more examples.
+
+## API
 
 - [h5::file](#h5file)
   - [file::file(filename, mode)](#filefilefilename-mode)
@@ -65,6 +68,9 @@ API:
   - [dataset::read_fit(buf)](#datasetread_fitbuf)
   - [dataset::write(buf, shape, options)](#datasetwritebuf-shape-options)
   - [dataset::write(buf, options)](#datasetwritebuf-options)
+  - [dataset::stream_writer(record_shape, options)](#datasetstream_writerrecord_shape-options)
+- [h5::stream_writer](#h5stream_writer)
+  - [stream_writer::write(buf)](#stream_writerwritebuf)
 - [h5::enums](#h5enums)
   - [enums::enums(members)](#enumsenumsmembers)
   - [enums::insert(name, value)](#enumsinsertname-value)
@@ -229,6 +235,30 @@ Writes data in a buffer to the dataset. This function works the same way as
 `dataset::write(buf, shape, options)` but uses [buffer traits](#h5buffer_traits)
 to extract the pointer and the shape of the buffer object (a `std::vector`
 or a user-defined one).
+
+#### dataset::stream_writer(record_shape, options)
+
+Starts incremental writing to the dataset. This funnction creates a new dataset
+with unlimited capacity and returns a [stream_writer](#h5stream-writer) for
+writing a sequence of same-shaped arrays to it.
+
+### h5::stream_writer
+
+Class for writing to a dataset.
+
+```c++
+class h5::stream_writer<D, record_rank> {
+    template<typename T>
+    void write(T const* buf);
+
+    template<typename B>
+    void write(B const& buf);
+};
+```
+
+#### stream_writer::write(buf)
+
+Writes an array stored in `buf` to the end of the dataset.
 
 ### h5::enums
 

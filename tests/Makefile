@@ -34,7 +34,8 @@ OBJECTS = \
   test_file.o \
   test_dataset.o \
   test_buffer.o \
-  test_enums.o
+  test_enums.o \
+  test_stream_writer.o
 
 
 .PHONY: run clean
@@ -58,3 +59,4 @@ test_file.o: test_file.cc utils.hpp ../include/h5.hpp
 test_dataset.o: test_dataset.cc utils.hpp ../include/h5.hpp
 test_buffer.o: test_buffer.cc utils.hpp ../include/h5.hpp
 test_enums.o: test_enums.cc utils.hpp ../include/h5.hpp
+test_stream_writer.o: test_stream_writer.cc utils.hpp ../include/h5.hpp

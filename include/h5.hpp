@@ -459,6 +459,26 @@ namespace h5
     }
 
 
+    namespace detail
+    {
+        template<int rank>
+        void set_dims(h5::shape<rank> const& shape, hsize_t* dims)
+        {
+            for (int i = 0; i < rank; i++) {
+                dims[i] = static_cast<hsize_t>(shape.dims[i]);
+            }
+        }
+
+        template<int rank>
+        void set_dims(hsize_t const* dims, h5::shape<rank>& shape)
+        {
+            for (int i = 0; i < rank; i++) {
+                shape.dims[i] = static_cast<std::size_t>(dims[i]);
+            }
+        }
+    }
+
+
     // BUFFER TRAITS ---------------------------------------------------------
 
     // Customization point for user-defined buffers.
@@ -621,9 +641,7 @@ namespace h5
             }
 
             h5::shape<rank> shape;
-            for (int i = 0; i < rank; i++) {
-                shape.dims[i] = static_cast<std::size_t>(dims[i]);
-            }
+            detail::set_dims(dims, shape);
             return shape;
         }
 
@@ -702,9 +720,7 @@ namespace h5
         )
         {
             hsize_t dims[rank];
-            for (int i = 0; i < rank; i++) {
-                dims[i] = static_cast<hsize_t>(shape.dims[i]);
-            }
+            detail::set_dims(shape, dims);
 
             h5::unique_hid<H5Sclose> dataspace = H5Screate_simple(rank, dims, nullptr);
             if (dataspace < 0) {
@@ -730,9 +746,7 @@ namespace h5
                 auto const chunk = detail::determine_chunk_size(shape, sizeof(D));
 
                 hsize_t chunk_dims[rank];
-                for (int i = 0; i < rank; i++) {
-                    chunk_dims[i] = chunk.dims[i];
-                }
+                set_dims(chunk, chunk_dims);
                 if (H5Pset_chunk(dataset_props, rank, chunk_dims) < 0) {
                     throw h5::exception("failed to set chunk size");
                 }
@@ -774,6 +788,99 @@ namespace h5
             return dataset;
         }
 
+
+        // Creates a new simple dataset with unlimited first dimension.
+        template<typename D, int record_rank>
+        h5::unique_hid<H5Dclose> create_unlimited_dataset(
+            hid_t file,
+            std::string const& path,
+            hid_t datatype,
+            h5::shape<record_rank> const& record_shape,
+            h5::dataset_options const& options
+        )
+        {
+            static constexpr int data_rank = record_rank + 1;
+
+            hsize_t dims[data_rank];
+            dims[0] = 0;
+            detail::set_dims(record_shape, dims + 1);
+
+            hsize_t max_dims[data_rank];
+            max_dims[0] = H5S_UNLIMITED;
+            detail::set_dims(record_shape, max_dims + 1);
+
+            h5::unique_hid<H5Sclose> dataspace = H5Screate_simple(data_rank, dims, max_dims);
+            if (dataspace < 0) {
+                throw h5::exception("failed to create dataspace");
+            }
+
+            // Allow intermediate groups to be automatically created.
+            h5::unique_hid<H5Pclose> link_props = H5Pcreate(H5P_LINK_CREATE);
+            if (link_props < 0) {
+                throw h5::exception("failed to create link props");
+            }
+            if (H5Pset_create_intermediate_group(link_props, 1) < 0) {
+                throw h5::exception("failed to configure link props");
+            }
+
+            // Optional filters.
+            h5::unique_hid<H5Pclose> dataset_props = H5Pcreate(H5P_DATASET_CREATE);
+            if (dataset_props < 0) {
+                throw h5::exception("failed to create dataset props");
+            }
+
+            // Unlimited dataset is always chunked. We first chunk record. If
+            // a whole record may fit in a chunk, we extend the chunk so that
+            // multiple records are stored in a chunk.
+            constexpr std::size_t KiB = 1024;
+            constexpr std::size_t base_size = 24 * KiB; // Arbitrary
+
+            auto const record_chunk = detail::determine_chunk_size(record_shape, sizeof(D));
+            auto const stream_chunk = 1 + base_size / (record_chunk.size() * sizeof(D));
+
+            hsize_t chunk_dims[data_rank];
+            chunk_dims[0] = static_cast<hsize_t>(stream_chunk);
+            set_dims(record_chunk, chunk_dims + 1);
+
+            if (H5Pset_chunk(dataset_props, data_rank, chunk_dims) < 0) {
+                throw h5::exception("failed to set chunk size");
+            }
+
+            if (options.scaleoffset) {
+                auto const type = detail::determine_scaleoffset_type<D>();
+                auto const factor = *options.scaleoffset;
+
+                if (H5Pset_scaleoffset(dataset_props, type, factor) < 0) {
+                    throw h5::exception("failed to set shuffle filter");
+                }
+            }
+
+            if (options.compression) {
+                auto const level = static_cast<unsigned>(*options.compression);
+
+                if (H5Pset_shuffle(dataset_props) < 0) {
+                    throw h5::exception("failed to set shuffle filter");
+                }
+                if (H5Pset_deflate(dataset_props, level) < 0) {
+                    throw h5::exception("failed to set deflate filter");
+                }
+            }
+
+            h5::unique_hid<H5Dclose> dataset = H5Dcreate2(
+                file,
+                path.c_str(),
+                datatype,
+                dataspace,
+                link_props,
+                dataset_props,
+                H5P_DEFAULT
+            );
+            if (dataset < 0) {
+                throw h5::exception("failed to create unlimited dataset");
+            }
+
+            return dataset;
+        }
 
         // Creates a new scalar dataset.
         template<typename D>
@@ -883,6 +990,123 @@ namespace h5
             }
         }
     }
+
+
+    // Provides incremental write access to an unliimted HDF5 dataset.
+    //
+    // `stream_writer` incrementally writes arrays of rank `record_rank` to
+    // dataset of rank `record_rank + 1`. The first dimension is assumed to
+    // be unlimited.
+    //
+    template<typename D, int record_rank>
+    class stream_writer
+    {
+        static constexpr int data_rank = record_rank + 1;
+
+    public:
+        // Constructor initiates writing to the dataset.
+        //
+        // Parameters:
+        //   file         = The file dataset resides in.
+        //   dataset      = The dataset to write to.
+        //   record_shape = Shape of each record (sub-array).
+        //
+        stream_writer(
+            hid_t file, hid_t dataset, h5::shape<record_rank> const& record_shape
+        )
+            : _file{file}, _dataset{dataset}, _record_shape{record_shape}
+        {
+            _maxdims[0] = H5S_UNLIMITED;
+            _datadims[0] = 0;
+            _memdims[0] = 1;
+            detail::set_dims(record_shape, _maxdims + 1);
+            detail::set_dims(record_shape, _datadims + 1);
+            detail::set_dims(record_shape, _memdims + 1);
+
+            _dataspace = H5Screate_simple(data_rank, _datadims, _maxdims);
+            if (_dataspace < 0) {
+                throw h5::exception("failed to create dataspace");
+            }
+
+            _memspace = H5Screate_simple(data_rank, _memdims, nullptr);
+            if (_memspace < 0) {
+                throw h5::exception("failed to create dataspace");
+            }
+        }
+
+        // Appends a record to the end of the dataset.
+        //
+        // Parameters:
+        //   T   = Type of the buffer. This must be compatible with the
+        //         dataset type `D`.
+        //   buf = Pointer to the buffer containing flattened record.
+        //
+        template<typename T>
+        void write(T const* buf)
+        {
+            herr_t status;
+
+            _datadims[0]++;
+            status = H5Dset_extent(_dataset, _datadims);
+            if (status < 0) {
+                throw h5::exception("failed to extend unlimited dataset");
+            }
+
+            status = H5Sset_extent_simple(_dataspace, data_rank, _datadims, _maxdims);
+            if (status < 0) {
+                throw h5::exception("failed to extend dataspace");
+            }
+
+            status = H5Sselect_hyperslab(
+                _dataspace, H5S_SELECT_SET, _offset, nullptr, _memdims, nullptr
+            );
+            if (status < 0) {
+                throw h5::exception("failed to select hyperslab for streaming write");
+            }
+
+            status = H5Dwrite(
+                _dataset, h5::memory_type<T>(), _memspace, _dataspace, H5P_DEFAULT, buf
+            );
+            if (status < 0) {
+                throw h5::exception("failed to write to dataset");
+            }
+
+            _offset[0] = _datadims[0];
+        }
+
+        // Calls `write` with buffer's underlying pointer.
+        template<
+            typename Buffer,
+            typename Tr = h5::buffer_traits<Buffer>,
+            typename T = typename Tr::value_type
+        >
+        void write(Buffer& buffer)
+        {
+            if (Tr::shape(buffer) != _record_shape) {
+                throw h5::exception("buffer has unexpected shape");
+            }
+            write(Tr::data(buffer));
+        }
+
+        // Flushes written data to disk.
+        void flush()
+        {
+            if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
+                throw h5::exception("failed to flush streaming changes to disk");
+            }
+        }
+
+    private:
+        hid_t _file;
+        hid_t _dataset;
+        h5::shape<record_rank> _record_shape;
+        h5::unique_hid<H5Sclose> _dataspace;
+        h5::unique_hid<H5Sclose> _memspace;
+        hsize_t _maxdims[data_rank] = {};
+        hsize_t _datadims[data_rank] = {};
+        hsize_t _memdims[data_rank] = {};
+        hsize_t _offset[data_rank] = {};
+    };
 
 
     // Provides read/write access to an HDF5 dataset.
@@ -1096,6 +1320,45 @@ namespace h5
         void write(Buffer const& buffer)
         {
             write(Tr::data(buffer), Tr::shape(buffer));
+        }
+
+
+        // Starts incremtnal writing to a new unlimited dataset.
+        //
+        // Parameters:
+        //   record_shape = Shape of each record in the dataset.
+        //   options      = Options for the newly created dataset.
+        //
+        h5::stream_writer<D, rank - 1> stream_writer(
+            h5::shape<rank - 1> const& record_shape,
+            h5::dataset_options const& options
+        )
+        {
+            if (detail::check_path_exists(_file, _path)) {
+                if (H5Ldelete(_file, _path.c_str(), H5P_DEFAULT) < 0) {
+                    throw h5::exception("failed to delete a path");
+                }
+            }
+
+            hid_t datatype = h5::storage_type<D>();
+            if (_given_datatype >= 0) {
+                datatype = _given_datatype;
+            }
+
+            _dataset = -1;
+            _dataset = detail::create_unlimited_dataset<D>(
+                _file, _path, datatype, record_shape, options
+            );
+
+            return h5::stream_writer<D, rank - 1>{_file, _dataset, record_shape};
+        }
+
+
+        // Calls `stream_writer` with default options.
+        h5::stream_writer<D, rank - 1> stream_writer(h5::shape<rank - 1> const& record_shape)
+        {
+            h5::dataset_options default_options;
+            return stream_writer(record_shape, default_options);
         }
 
 
