@@ -125,11 +125,11 @@ Expected dataset types:
 
 | D       | Description                |
 |---------|----------------------------|
-| h5::i8  | 8-bit signed jinteger      |
+| h5::i8  | 8-bit signed integer       |
 | h5::i16 | 16-bit signed integer      |
 | h5::i32 | 32-bit signed integer      |
 | h5::i64 | 64-bit signed integer      |
-| h5::u8  | 8-bit unsigned jinteger    |
+| h5::u8  | 8-bit unsigned integer     |
 | h5::u16 | 16-bit unsigned integer    |
 | h5::u32 | 32-bit unsigned integer    |
 | h5::u64 | 64-bit unsigned integer    |
@@ -238,7 +238,7 @@ or a user-defined one).
 
 #### dataset::stream_writer(record_shape, options)
 
-Starts incremental writing to the dataset. This funnction creates a new dataset
+Starts incremental writing to the dataset. This function creates a new dataset
 with unlimited capacity and returns a [stream_writer](#h5stream-writer) for
 writing a sequence of same-shaped arrays to it.
 
