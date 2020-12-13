@@ -459,6 +459,26 @@ namespace h5
     }
 
 
+    namespace detail
+    {
+        template<int rank>
+        void set_dims(h5::shape<rank> const& shape, hsize_t* dims)
+        {
+            for (int i = 0; i < rank; i++) {
+                dims[i] = static_cast<hsize_t>(shape.dims[i]);
+            }
+        }
+
+        template<int rank>
+        void set_dims(hsize_t const* dims, h5::shape<rank>& shape)
+        {
+            for (int i = 0; i < rank; i++) {
+                shape.dims[i] = static_cast<std::size_t>(dims[i]);
+            }
+        }
+    }
+
+
     // BUFFER TRAITS ---------------------------------------------------------
 
     // Customization point for user-defined buffers.
@@ -621,9 +641,7 @@ namespace h5
             }
 
             h5::shape<rank> shape;
-            for (int i = 0; i < rank; i++) {
-                shape.dims[i] = static_cast<std::size_t>(dims[i]);
-            }
+            detail::set_dims(dims, shape);
             return shape;
         }
 
@@ -702,9 +720,7 @@ namespace h5
         )
         {
             hsize_t dims[rank];
-            for (int i = 0; i < rank; i++) {
-                dims[i] = static_cast<hsize_t>(shape.dims[i]);
-            }
+            detail::set_dims(shape, dims);
 
             h5::unique_hid<H5Sclose> dataspace = H5Screate_simple(rank, dims, nullptr);
             if (dataspace < 0) {
@@ -730,9 +746,7 @@ namespace h5
                 auto const chunk = detail::determine_chunk_size(shape, sizeof(D));
 
                 hsize_t chunk_dims[rank];
-                for (int i = 0; i < rank; i++) {
-                    chunk_dims[i] = chunk.dims[i];
-                }
+                set_dims(chunk, chunk_dims);
                 if (H5Pset_chunk(dataset_props, rank, chunk_dims) < 0) {
                     throw h5::exception("failed to set chunk size");
                 }
