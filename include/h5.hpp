@@ -1007,13 +1007,14 @@ namespace h5
         // Constructor initiates writing to the dataset.
         //
         // Parameters:
+        //   file         = The file dataset resides in.
         //   dataset      = The dataset to write to.
         //   record_shape = Shape of each record (sub-array).
         //
         stream_writer(
-            hid_t dataset, h5::shape<record_rank> const& record_shape
+            hid_t file, hid_t dataset, h5::shape<record_rank> const& record_shape
         )
-            : _dataset{dataset}, _record_shape{record_shape}
+            : _file{file}, _dataset{dataset}, _record_shape{record_shape}
         {
             _maxdims[0] = H5S_UNLIMITED;
             _datadims[0] = 0;
@@ -1090,12 +1091,13 @@ namespace h5
         // Flushes written data to disk.
         void flush()
         {
-            if (H5Dflush(_dataset) < 0) {
+            if (H5Fflush(_file, H5F_SCOPE_LOCAL) < 0) {
                 throw h5::exception("failed to flush streaming changes to disk");
             }
         }
 
     private:
+        hid_t _file;
         hid_t _dataset;
         h5::shape<record_rank> _record_shape;
         h5::unique_hid<H5Sclose> _dataspace;
@@ -1348,7 +1350,7 @@ namespace h5
                 _file, _path, datatype, record_shape, options
             );
 
-            return h5::stream_writer<D, rank - 1>{_dataset, record_shape};
+            return h5::stream_writer<D, rank - 1>{_file, _dataset, record_shape};
         }
 
 
