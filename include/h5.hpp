@@ -992,12 +992,24 @@ namespace h5
     }
 
 
+    // Provides incremental write access to an unliimted HDF5 dataset.
+    //
+    // `stream_writer` incrementally writes arrays of rank `record_rank` to
+    // dataset of rank `record_rank + 1`. The first dimension is assumed to
+    // be unlimited.
+    //
     template<typename D, int record_rank>
     class stream_writer
     {
         static constexpr int data_rank = record_rank + 1;
 
     public:
+        // Constructor initiates writing to the dataset.
+        //
+        // Parameters:
+        //   dataset      = The dataset to write to.
+        //   record_shape = Shape of each record (sub-array).
+        //
         stream_writer(
             hid_t dataset, h5::shape<record_rank> const& record_shape
         )
@@ -1021,13 +1033,19 @@ namespace h5
             }
         }
 
+        // Appends a record to the end of the dataset.
+        //
+        // Parameters:
+        //   T   = Type of the buffer. This must be compatible with the
+        //         dataset type `D`.
+        //   buf = Pointer to the buffer containing flattened record.
+        //
         template<typename T>
         void write(T const* buf)
         {
-            _datadims[0]++;
-
             herr_t status;
 
+            _datadims[0]++;
             status = H5Dset_extent(_dataset, _datadims);
             if (status < 0) {
                 throw h5::exception("failed to extend unlimited dataset");
@@ -1052,9 +1070,10 @@ namespace h5
                 throw h5::exception("failed to write to dataset");
             }
 
-            _offset[0]++;
+            _offset[0] = _datadims[0];
         }
 
+        // Calls `write` with buffer's underlying pointer.
         template<
             typename Buffer,
             typename Tr = h5::buffer_traits<Buffer>,
@@ -1068,6 +1087,7 @@ namespace h5
             write(Tr::data(buffer));
         }
 
+        // Flushes written data to disk.
         void flush()
         {
             if (H5Dflush(_dataset) < 0) {
