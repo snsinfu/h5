@@ -54,6 +54,8 @@ file.dataset<float, 3>("my/new/dataset").write(buf.data(), shape);
 file.dataset<float, 3>("my/new/dataset").read(buf.data(), shape);
 ```
 
+See [cookbook](./COOKBOOK.md) for more examples.
+
 ## API
 
 - [h5::file](#h5file)
