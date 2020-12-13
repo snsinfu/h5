@@ -29,9 +29,13 @@ int main()
     std::uniform_int_distribution<unsigned> uniform(0, 1);
     std::generate(state.begin(), state.end(), [&] { return uniform(random); });
 
-    // Open a two-dimensional dataset with shape (infinite, size) and data
-    // type u8 (8-bit unsigned integer).
+    // Open a two-dimensional dataset with data type u8 (8-bit unsigned int).
     auto state_dataset = output.dataset<h5::u8, 2>("state_history");
+
+    // Start incremental writing to the dataset. Here {size} specifies that
+    // the shape of the dataset is (infinite, size). The option scaleoffset = 0
+    // is effective to compress integral dataset better. When this option is
+    // set, the lowest compression factor compression = 1 is sufficient.
     auto state_stream = state_dataset.stream_writer(
         {size}, {.compression = 1, .scaleoffset = 0}
     );
@@ -55,7 +59,8 @@ int main()
 }
 ```
 
-Run the code and inspect the output file:
+Run the code and inspect the output file. You see 100000-by-50 matrix stored
+in the output HDF5 file.
 
 ```console
 $ c++ -std=c++14 -O2 -isystem include -o example example.cc -lhdf5
@@ -75,13 +80,3 @@ Opened "output.h5" with sec2 driver.
     Filter-2:  deflate-1 OPT {1}
     Type:      native unsigned char
 ```
-
-Notes:
-
-- `h5::i8` specifies dataset to store 8-bit integral values. Small data type
-  is beneficial for reducing file size and also memory pressure in downstream
-  analysis.
-- `scaleoffset = 0` is effective to compress integral dataset better. When this
-  option is set, the lowest compression factor `compression = 1` is sufficient.
-- `states_stream.write()` expects a pointer to the first element of the
-  two-dimensional array. So we use `&state[0][0]`.
