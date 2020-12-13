@@ -8,6 +8,7 @@
 
 - [Install](#install)
 - [Usage](#usage)
+- [API](#api)
 - [Testing](#testing)
 - [License](#license)
 
@@ -53,7 +54,7 @@ file.dataset<float, 3>("my/new/dataset").write(buf.data(), shape);
 file.dataset<float, 3>("my/new/dataset").read(buf.data(), shape);
 ```
 
-API:
+## API
 
 - [h5::file](#h5file)
   - [file::file(filename, mode)](#filefilefilename-mode)
