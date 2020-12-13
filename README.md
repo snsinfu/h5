@@ -40,7 +40,7 @@ git submodule add https://github.com/snsinfu/h5 submodules/h5
 The usage is as easy as this:
 
 ```c++
-h5::file file("data.h5", "r+");
+h5::file file("data.h5", "w");
 
 // h5 operates on multi-dimensional array in C layout. Here's a buffer
 // containing a 10x10x10 tensor.
