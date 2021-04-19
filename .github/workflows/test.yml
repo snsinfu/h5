@@ -1,0 +1,27 @@
+name: test
+
+on: push
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: install libhdf5
+        run: |
+          sudo apt-get update
+          sudo apt-get install libhdf5-dev
+
+      - name: g++
+        run: make -C tests clean run
+        env:
+          HDF5_CXX: g++
+          HDF5_CLINKER: g++
+
+      - name: clang++
+        run: make -C tests clean run EXTRA_CXXFLAGS=-stdlib=libc++
+        env:
+          HDF5_CXX: clang++
+          HDF5_CLINKER: clang++
