@@ -15,13 +15,13 @@ jobs:
           sudo apt-get install libhdf5-dev
 
       - name: g++
-        run: make -C tests clean run
+        run: make -C tests -j 2 clean run
         env:
           HDF5_CXX: g++
           HDF5_CLINKER: g++
 
       - name: clang++
-        run: make -C tests clean run EXTRA_CXXFLAGS=-stdlib=libc++
+        run: make -C tests -j 2 clean run EXTRA_CXXFLAGS=-stdlib=libc++
         env:
           HDF5_CXX: clang++
           HDF5_CLINKER: clang++
